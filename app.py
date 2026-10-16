@@ -12,7 +12,11 @@ from dotenv import load_dotenv
 from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
 from PIL import Image
 
-load_dotenv()
+# Aniq shu loyihaning o'z .env fayli, override=True bilan - aks holda bir
+# nechta loyiha bitta jarayonda birlashtirilganda (masalan PythonAnywhere'da),
+# avval yuklangan boshqa loyihaning o'zgaruvchilari ustidan yozilmay qolishi
+# mumkin edi.
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
 MAHSULOT_HAJMI_RE = re.compile(r"(\d+)\s*[gG][bB]")
 
