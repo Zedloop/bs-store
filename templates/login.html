@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kirish — BS Store</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f4f2;
+    --surface: #ffffff;
+    --border: #e6e5e1;
+    --text: #23231f;
+    --text-muted: #7a7972;
+    --accent: #2f6f4f;
+    --accent-hover: #24593f;
+    --danger: #c23a2e;
+    --danger-soft: #fbebe9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #1c1c1a;
+      --surface: #252522;
+      --border: #38372f;
+      --text: #ecebe6;
+      --text-muted: #a3a195;
+      --accent: #4f9d74;
+      --accent-hover: #5fb584;
+      --danger: #e2685b;
+      --danger-soft: #3a2420;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 16px;
+  }
+  .karta {
+    width: 100%;
+    max-width: 340px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 24px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .brand img {
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
+    object-fit: cover;
+  }
+  .brand span {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 700;
+    font-size: 1.3rem;
+    letter-spacing: 0.2px;
+  }
+  .brand span b { color: var(--accent); }
+  p.sub { color: var(--text-muted); margin: 0 0 20px; font-size: 0.9rem; }
+  input[type="password"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 1rem;
+    margin-bottom: 14px;
+  }
+  button {
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  .xato {
+    background: var(--danger-soft);
+    color: var(--danger);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    margin-bottom: 14px;
+  }
+</style>
+</head>
+<body>
+  <div class="karta">
+    <div class="brand">
+      <img src="/static/bs-logo.jpg" alt="BS Store">
+      <span>BS <b>Store</b></span>
+    </div>
+    <p class="sub">Davom etish uchun parolni kiriting</p>
+    {% if xato %}<div class="xato">{{ xato }}</div>{% endif %}
+    <form method="post">
+      <input type="password" name="parol" placeholder="Parol" autofocus required>
+      <button type="submit">Kirish</button>
+    </form>
+  </div>
+</body>
+</html>

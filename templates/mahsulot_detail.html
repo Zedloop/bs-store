@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Товар{% endblock %}
+{% block content %}
+  <a class="back-link" href="/">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    Назад к товарам
+  </a>
+
+  <div class="grid">
+
+    <div class="card full">
+      <div class="detail-header">
+        <div class="detail-title-row">
+          <h2 id="mahsulot-nomi-korsatish">…</h2>
+          <button type="button" class="icon-btn" id="btn-tahrirlash" title="Переименовать" aria-label="Переименовать">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+          </button>
+        </div>
+        <button type="button" class="icon-btn danger" id="btn-ochirish" title="Удалить товар" aria-label="Удалить товар">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        </button>
+      </div>
+      <form id="form-nomi-tahrirlash" style="display:none;">
+        <div class="field field-grow">
+          <label for="tahrirlash-nomi">Новое название</label>
+          <input type="text" id="tahrirlash-nomi" required>
+        </div>
+        <button type="submit">Сохранить</button>
+        <button type="button" id="btn-tahrirlash-bekor">Отмена</button>
+      </form>
+      <div class="xato" id="xato-nomi"></div>
+    </div>
+
+    <div class="card">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        Фото товара
+      </h2>
+      <div id="rasm-wrap"></div>
+      <input type="file" id="rasm-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+      <button type="button" id="btn-rasm-yuklash" style="margin-top:14px;">Загрузить фото</button>
+      <div class="xato" id="xato-rasm"></div>
+    </div>
+
+    <div class="card">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>
+        Остаток на складе
+      </h2>
+      <div class="stat-box" id="qoldiq-box">
+        <div class="balans-label">Текущий остаток</div>
+        <div class="balans" id="qoldiq-value">—</div>
+      </div>
+    </div>
+
+    <div class="card full">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16l-4-4 4-4"/><path d="M3 12h13"/><path d="M17 8l4 4-4 4"/><path d="M21 12H8"/></svg>
+        Складские операции по этому товару
+      </h2>
+      <form id="form-ombor">
+        <div class="field">
+          <label for="ombor-turi">Тип операции</label>
+          <select id="ombor-turi" required>
+            <option value="kirim">Приход (+ склад)</option>
+            <option value="chiqim">Расход — отправка на склад Uzum (− склад)</option>
+            <option value="samovykup">Самовыкуп — возврат товара (+ склад)</option>
+            <option value="spisanie">Списание — брак/потеря (− склад)</option>
+            <option value="prodazha">Прямая продажа — продано лично (− склад)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ombor-miqdor">Количество</label>
+          <input type="number" id="ombor-miqdor" placeholder="0" min="1" required>
+        </div>
+        <div class="field field-grow">
+          <label for="ombor-izoh">Комментарий</label>
+          <input type="text" id="ombor-izoh" placeholder="Необязательно">
+        </div>
+        <button type="submit">Сохранить</button>
+      </form>
+      <div class="xato" id="xato-ombor"></div>
+      <table>
+        <thead><tr><th>Дата</th><th>Тип</th><th>Кол-во</th></tr></thead>
+        <tbody id="ombor-jadval"></tbody>
+      </table>
+    </div>
+
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+const mahsulotId = {{ mahsulot_id }};
+
+function renderRasm(rasm) {
+  const wrap = document.getElementById("rasm-wrap");
+  wrap.innerHTML = rasm
+    ? `<img class="thumb-lg" src="/static/uploads/${encodeURIComponent(rasm)}" alt="">`
+    : `<div class="thumb-lg thumb-lg-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
+}
+
+async function refreshMahsulot() {
+  const m = await apiGet(`/api/mahsulotlar/${mahsulotId}`);
+  if (m.xato) { location.href = "/"; return; }
+
+  document.getElementById("mahsulot-nomi-korsatish").textContent = m.nomi;
+  document.getElementById("tahrirlash-nomi").value = m.nomi;
+
+  const qoldiqEl = document.getElementById("qoldiq-value");
+  qoldiqEl.textContent = m.qoldiq;
+  document.getElementById("qoldiq-box").className = "stat-box" + (m.qoldiq <= 3 ? " manfiy" : "");
+
+  renderRasm(m.rasm);
+}
+
+async function refreshOmborTarix() {
+  const list = await apiGet(`/api/ombor?mahsulot_id=${mahsulotId}`);
+  const tbody = document.getElementById("ombor-jadval");
+  const turiLabel = {
+    kirim: '<span class="badge badge-kirim">Приём на склад</span>',
+    chiqim: '<span class="badge badge-chiqim">Отправка в Uzum</span>',
+    samovykup: '<span class="badge badge-samovykup">Самовыкуп</span>',
+    spisanie: '<span class="badge badge-spisanie">Списание</span>',
+    prodazha: '<span class="badge badge-prodazha">Прямая продажа</span>',
+  };
+  tbody.innerHTML = list.map(o =>
+    `<tr><td>${o.sana.slice(0,16)}</td><td>${turiLabel[o.turi]}</td><td>${o.miqdor}</td></tr>`
+  ).join("") || "<tr><td colspan=3 class='empty-row'>Операций пока нет</td></tr>";
+}
+
+// ---- переименование ----
+document.getElementById("btn-tahrirlash").addEventListener("click", () => {
+  document.getElementById("form-nomi-tahrirlash").style.display = "flex";
+  document.getElementById("tahrirlash-nomi").focus();
+});
+document.getElementById("btn-tahrirlash-bekor").addEventListener("click", () => {
+  document.getElementById("form-nomi-tahrirlash").style.display = "none";
+  showError("xato-nomi", "");
+});
+document.getElementById("form-nomi-tahrirlash").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  showError("xato-nomi", "");
+  const nomi = document.getElementById("tahrirlash-nomi").value.trim();
+  try {
+    await apiSend("PATCH", `/api/mahsulotlar/${mahsulotId}`, { nomi });
+    document.getElementById("form-nomi-tahrirlash").style.display = "none";
+    await refreshMahsulot();
+  } catch (err) { showError("xato-nomi", err.message); }
+});
+
+// ---- удаление ----
+document.getElementById("btn-ochirish").addEventListener("click", async () => {
+  const nomi = document.getElementById("mahsulot-nomi-korsatish").textContent;
+  if (!confirm(`Удалить товар «${nomi}»? Вся история операций по нему тоже будет удалена.`)) return;
+  try {
+    await apiSend("DELETE", `/api/mahsulotlar/${mahsulotId}`);
+    location.href = "/";
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// ---- фото ----
+document.getElementById("btn-rasm-yuklash").addEventListener("click", () => {
+  document.getElementById("rasm-input").click();
+});
+document.getElementById("rasm-input").addEventListener("change", async (e) => {
+  showError("xato-rasm", "");
+  const file = e.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append("rasm", file);
+  try {
+    await apiUpload(`/api/mahsulotlar/${mahsulotId}/rasm`, formData);
+    await refreshMahsulot();
+  } catch (err) {
+    showError("xato-rasm", err.message);
+  } finally {
+    e.target.value = "";
+  }
+});
+
+// ---- складская операция ----
+document.getElementById("form-ombor").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  showError("xato-ombor", "");
+  const turi = document.getElementById("ombor-turi").value;
+  const miqdor = document.getElementById("ombor-miqdor").value;
+  const izoh = document.getElementById("ombor-izoh").value.trim();
+  try {
+    await apiPost("/api/ombor", { mahsulot_id: mahsulotId, turi, miqdor, izoh });
+    document.getElementById("ombor-miqdor").value = "";
+    document.getElementById("ombor-izoh").value = "";
+    await Promise.all([refreshMahsulot(), refreshOmborTarix()]);
+  } catch (err) { showError("xato-ombor", err.message); }
+});
+
+refreshMahsulot();
+refreshOmborTarix();
+</script>
+{% endblock %}

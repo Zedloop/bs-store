@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Товары{% endblock %}
+{% block content %}
+  <div class="grid">
+
+    <div class="card full">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        Добавить новый товар
+      </h2>
+      <form id="form-mahsulot">
+        <div class="field field-grow">
+          <label for="mahsulot-nomi">Название товара</label>
+          <input type="text" id="mahsulot-nomi" placeholder="Например, Флешка Kingston" required>
+        </div>
+        <div class="field field-grow">
+          <label>Варианты / объёмы <span class="hint-inline">(необязательно)</span></label>
+          <div class="variant-list" id="mahsulot-variantlar-list"></div>
+        </div>
+        <button type="submit">Добавить</button>
+      </form>
+      <div class="hint">Заполните строку варианта — ниже сама появится новая. Товар будет добавлен отдельно для каждого варианта: «Флешка Kingston 16GB», «Флешка Kingston 32GB» и т.д.</div>
+      <div class="xato" id="xato-mahsulot"></div>
+    </div>
+
+    <div class="card full">
+      <div class="detail-header">
+        <h2 style="margin:0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>
+          Остатки на складе
+        </h2>
+        <input type="text" id="mahsulot-qidiruv" placeholder="Найти товар..." style="max-width:220px;">
+      </div>
+      <table>
+        <thead><tr><th>Товар</th><th>Остаток</th></tr></thead>
+        <tbody id="mahsulotlar-jadval"></tbody>
+      </table>
+    </div>
+
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+let mahsulotlarToliqRoyxat = [];
+
+function renderMahsulotlarJadval() {
+  const soz = document.getElementById("mahsulot-qidiruv").value.trim().toLowerCase();
+  const list = soz
+    ? mahsulotlarToliqRoyxat.filter(m => m.nomi.toLowerCase().includes(soz))
+    : mahsulotlarToliqRoyxat;
+
+  const tbody = document.getElementById("mahsulotlar-jadval");
+  tbody.innerHTML = list.map(m => `
+    <tr class="clickable-row" onclick="location.href='/mahsulot/${m.id}'">
+      <td>
+        <div class="mahsulot-cell">
+          ${m.rasm
+            ? `<img class="thumb" src="/static/uploads/${encodeURIComponent(m.rasm)}" alt="">`
+            : `<span class="thumb thumb-empty"></span>`}
+          <span>${escapeHtml(m.nomi)}</span>
+        </div>
+      </td>
+      <td class="${m.qoldiq <= 3 ? 'qoldiq-kam' : ''}">${m.qoldiq}</td>
+    </tr>
+  `).join("") || `<tr><td colspan=2 class='empty-row'>${soz ? "Ничего не найдено" : "Товаров пока нет"}</td></tr>`;
+}
+
+async function refreshMahsulotlar() {
+  mahsulotlarToliqRoyxat = await apiGet("/api/mahsulotlar");
+  renderMahsulotlarJadval();
+}
+
+document.getElementById("mahsulot-qidiruv").addEventListener("input", renderMahsulotlarJadval);
+
+const variantlarList = document.getElementById("mahsulot-variantlar-list");
+
+function addVariantRow() {
+  const row = document.createElement("div");
+  row.className = "variant-row";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "variant-input";
+  input.placeholder = "Например, 16GB";
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "variant-remove";
+  removeBtn.textContent = "×";
+  removeBtn.setAttribute("aria-label", "Удалить строку");
+  removeBtn.addEventListener("click", () => {
+    row.remove();
+    if (!variantlarList.querySelector(".variant-row")) addVariantRow();
+  });
+
+  input.addEventListener("input", () => {
+    const rows = Array.from(variantlarList.querySelectorAll(".variant-row"));
+    const isLast = rows[rows.length - 1] === row;
+    if (isLast && input.value.trim() !== "") addVariantRow();
+  });
+
+  row.appendChild(input);
+  row.appendChild(removeBtn);
+  variantlarList.appendChild(row);
+  return row;
+}
+
+function resetVariantRows() {
+  variantlarList.innerHTML = "";
+  addVariantRow();
+}
+
+document.getElementById("form-mahsulot").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  showError("xato-mahsulot", "");
+  const baseNomi = document.getElementById("mahsulot-nomi").value.trim();
+  const variantlar = Array.from(variantlarList.querySelectorAll(".variant-input"))
+    .map(i => i.value.trim())
+    .filter(Boolean);
+  const nomlar = variantlar.length
+    ? variantlar.map(v => `${baseNomi} ${v}`)
+    : [baseNomi];
+
+  const xatolar = [];
+  for (const nomi of nomlar) {
+    try {
+      await apiPost("/api/mahsulotlar", { nomi });
+    } catch (err) {
+      xatolar.push(`${nomi}: ${err.message}`);
+    }
+  }
+
+  if (xatolar.length) {
+    showError("xato-mahsulot", xatolar.join("; "));
+  } else {
+    document.getElementById("mahsulot-nomi").value = "";
+    resetVariantRows();
+  }
+  await refreshMahsulotlar();
+});
+
+resetVariantRows();
+refreshMahsulotlar();
+</script>
+{% endblock %}

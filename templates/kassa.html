@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Касса{% endblock %}
+{% block content %}
+  <div class="grid">
+
+    <div class="card">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14.5" r="1.4" fill="currentColor" stroke="none"/></svg>
+        Баланс кассы
+      </h2>
+      <div class="balans-wrap" id="kassa-balans-wrap">
+        <div class="balans-label">Текущий баланс</div>
+        <div class="balans" id="kassa-balans">—</div>
+      </div>
+      <table>
+        <thead><tr><th>Дата</th><th>Тип</th><th>Сумма</th><th>Комментарий</th></tr></thead>
+        <tbody id="kassa-jadval"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        Добавить операцию по кассе
+      </h2>
+      <form id="form-kassa">
+        <div class="field">
+          <label for="kassa-turi">Тип операции</label>
+          <select id="kassa-turi" required>
+            <option value="kirim">Приход (+)</option>
+            <option value="chiqim">Расход (−)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="kassa-summa">Сумма, сум</label>
+          <input type="number" id="kassa-summa" placeholder="0" min="1" step="0.01" required>
+        </div>
+        <div class="field field-grow">
+          <label for="kassa-izoh">Комментарий</label>
+          <input type="text" id="kassa-izoh" placeholder="Необязательно">
+        </div>
+        <button type="submit">Сохранить</button>
+      </form>
+      <div class="xato" id="xato-kassa"></div>
+    </div>
+
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+async function refreshKassa() {
+  const data = await apiGet("/api/kassa");
+  const balansEl = document.getElementById("kassa-balans");
+  const balansWrap = document.getElementById("kassa-balans-wrap");
+  balansEl.textContent = data.balans.toLocaleString("ru-RU") + " сум";
+  const manfiy = data.balans < 0;
+  balansEl.className = "balans " + (manfiy ? "manfiy" : "musbat");
+  balansWrap.className = "balans-wrap " + (manfiy ? "manfiy" : "");
+
+  const tbody = document.getElementById("kassa-jadval");
+  tbody.innerHTML = data.harakatlar.map(k =>
+    `<tr><td>${k.sana.slice(0,16)}</td><td>${k.turi === 'kirim' ? '<span class="badge badge-kirim">Приход</span>' : '<span class="badge badge-chiqim">Расход</span>'}</td><td>${k.summa.toLocaleString("ru-RU")}</td><td>${escapeHtml(k.izoh || "")}</td></tr>`
+  ).join("") || "<tr><td colspan=4 class='empty-row'>Операций пока нет</td></tr>";
+}
+
+document.getElementById("form-kassa").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  showError("xato-kassa", "");
+  const turi = document.getElementById("kassa-turi").value;
+  const summa = document.getElementById("kassa-summa").value;
+  const izoh = document.getElementById("kassa-izoh").value.trim();
+  try {
+    await apiPost("/api/kassa", { turi, summa, izoh });
+    document.getElementById("kassa-summa").value = "";
+    document.getElementById("kassa-izoh").value = "";
+    await refreshKassa();
+  } catch (err) { showError("xato-kassa", err.message); }
+});
+
+refreshKassa();
+</script>
+{% endblock %}

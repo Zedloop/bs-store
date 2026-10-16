@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}Складские операции{% endblock %}
+{% block content %}
+  <div class="grid">
+
+    <div class="card full">
+      <div class="detail-header">
+        <h2 style="margin:0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16l-4-4 4-4"/><path d="M3 12h13"/><path d="M17 8l4 4-4 4"/><path d="M21 12H8"/></svg>
+          Складские операции
+        </h2>
+        <button type="button" id="btn-yangi-operatsiya">+ Добавить складскую операцию</button>
+      </div>
+
+      <div id="operatsiya-panel" hidden>
+        <div class="form-row">
+          <div class="field">
+            <label for="operatsiya-turi">Тип операции</label>
+            <select id="operatsiya-turi" required>
+              <option value="kirim">Приход (+ склад)</option>
+              <option value="chiqim">Расход — отправка на склад Uzum (− склад)</option>
+              <option value="samovykup">Самовыкуп — возврат товара (+ склад)</option>
+              <option value="spisanie">Списание — брак/потеря (− склад)</option>
+              <option value="prodazha">Прямая продажа — продано лично (− склад)</option>
+            </select>
+          </div>
+          <div class="field field-grow">
+            <label for="operatsiya-izoh">Комментарий</label>
+            <input type="text" id="operatsiya-izoh" placeholder="Необязательно">
+          </div>
+        </div>
+
+        <div class="field field-grow">
+          <label>Товары в этой операции</label>
+          <div class="variant-list" id="operatsiya-tovarlar-list"></div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:14px;">
+          <button type="button" id="btn-operatsiya-saqlash">Сохранить операцию</button>
+          <button type="button" id="btn-operatsiya-bekor">Отмена</button>
+        </div>
+        <div class="xato" id="xato-operatsiya"></div>
+      </div>
+
+      <div id="operatsiyalar-royxat-blok">
+        <div class="filter-row" id="operatsiya-filtr" style="margin-top:18px;">
+          <button type="button" class="filter-btn active" data-turi="">Все</button>
+          <button type="button" class="filter-btn" data-turi="kirim">Приём на склад</button>
+          <button type="button" class="filter-btn" data-turi="chiqim">Отправка в Uzum</button>
+          <button type="button" class="filter-btn" data-turi="samovykup">Самовыкуп</button>
+          <button type="button" class="filter-btn" data-turi="spisanie">Списание</button>
+          <button type="button" class="filter-btn" data-turi="prodazha">Прямая продажа</button>
+        </div>
+
+        <table style="margin-top:12px;">
+          <thead><tr><th>Дата</th><th>Тип</th><th>Товаров</th><th>Комментарий</th></tr></thead>
+          <tbody id="operatsiyalar-jadval"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+let mahsulotlarCache = [];
+
+async function loadMahsulotlarCache() {
+  mahsulotlarCache = await apiGet("/api/mahsulotlar");
+}
+
+const tovarlarList = document.getElementById("operatsiya-tovarlar-list");
+
+function addTovarRow() {
+  const row = document.createElement("div");
+  row.className = "variant-row tovar-row";
+
+  const combo = document.createElement("div");
+  combo.className = "tovar-combo";
+
+  const searchInput = document.createElement("input");
+  searchInput.type = "text";
+  searchInput.className = "tovar-mahsulot-search";
+  searchInput.placeholder = "Найти товар...";
+  searchInput.autocomplete = "off";
+
+  const hiddenId = document.createElement("input");
+  hiddenId.type = "hidden";
+  hiddenId.className = "tovar-mahsulot-id";
+
+  const dropdown = document.createElement("div");
+  dropdown.className = "tovar-dropdown";
+  dropdown.hidden = true;
+
+  function renderDropdown() {
+    const q = searchInput.value.trim().toLowerCase();
+    const matches = mahsulotlarCache.filter(m => m.nomi.toLowerCase().includes(q));
+    dropdown.innerHTML = matches.length
+      ? matches.map(m => `<div class="tovar-dropdown-item" data-id="${m.id}" data-nomi="${escapeHtml(m.nomi)}">${escapeHtml(m.nomi)}</div>`).join("")
+      : `<div class="tovar-dropdown-empty">Ничего не найдено</div>`;
+    dropdown.hidden = false;
+  }
+
+  function checkAutoAddRow() {
+    const rows = Array.from(tovarlarList.querySelectorAll(".tovar-row"));
+    const isLast = rows[rows.length - 1] === row;
+    if (isLast && (hiddenId.value || miqdorInput.value.trim() !== "")) addTovarRow();
+  }
+
+  searchInput.addEventListener("focus", renderDropdown);
+  searchInput.addEventListener("input", () => {
+    hiddenId.value = "";
+    renderDropdown();
+  });
+  searchInput.addEventListener("blur", () => {
+    setTimeout(() => { dropdown.hidden = true; }, 150);
+  });
+
+  dropdown.addEventListener("mousedown", (e) => {
+    const item = e.target.closest(".tovar-dropdown-item");
+    if (!item) return;
+    e.preventDefault();
+    hiddenId.value = item.dataset.id;
+    searchInput.value = item.dataset.nomi;
+    dropdown.hidden = true;
+    checkAutoAddRow();
+  });
+
+  combo.appendChild(searchInput);
+  combo.appendChild(hiddenId);
+  combo.appendChild(dropdown);
+
+  const miqdorInput = document.createElement("input");
+  miqdorInput.type = "number";
+  miqdorInput.className = "tovar-miqdor";
+  miqdorInput.placeholder = "Кол-во";
+  miqdorInput.min = "1";
+  miqdorInput.addEventListener("input", checkAutoAddRow);
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "variant-remove";
+  removeBtn.textContent = "×";
+  removeBtn.setAttribute("aria-label", "Удалить строку");
+  removeBtn.addEventListener("click", () => {
+    row.remove();
+    if (!tovarlarList.querySelector(".tovar-row")) addTovarRow();
+  });
+
+  row.appendChild(combo);
+  row.appendChild(miqdorInput);
+  row.appendChild(removeBtn);
+  tovarlarList.appendChild(row);
+  return row;
+}
+
+function resetOperatsiyaForm() {
+  document.getElementById("operatsiya-turi").value = "kirim";
+  document.getElementById("operatsiya-izoh").value = "";
+  tovarlarList.innerHTML = "";
+  addTovarRow();
+  showError("xato-operatsiya", "");
+}
+
+function showRoyxatBlok(korsat) {
+  document.getElementById("operatsiyalar-royxat-blok").hidden = !korsat;
+}
+
+document.getElementById("btn-yangi-operatsiya").addEventListener("click", async () => {
+  const panel = document.getElementById("operatsiya-panel");
+  if (panel.hidden) {
+    await loadMahsulotlarCache();
+    resetOperatsiyaForm();
+    panel.hidden = false;
+    showRoyxatBlok(false);
+  } else {
+    panel.hidden = true;
+    showRoyxatBlok(true);
+  }
+});
+
+document.getElementById("btn-operatsiya-bekor").addEventListener("click", () => {
+  document.getElementById("operatsiya-panel").hidden = true;
+  showRoyxatBlok(true);
+});
+
+document.getElementById("btn-operatsiya-saqlash").addEventListener("click", async () => {
+  showError("xato-operatsiya", "");
+  const turi = document.getElementById("operatsiya-turi").value;
+  const izoh = document.getElementById("operatsiya-izoh").value.trim();
+  const tovarlar = Array.from(tovarlarList.querySelectorAll(".tovar-row"))
+    .map(row => ({
+      mahsulot_id: row.querySelector(".tovar-mahsulot-id").value,
+      miqdor: row.querySelector(".tovar-miqdor").value,
+    }))
+    .filter(t => t.mahsulot_id && t.miqdor);
+
+  if (!mahsulotlarCache.length) {
+    showError("xato-operatsiya", "Сначала добавьте товар в разделе «Товары»");
+    return;
+  }
+  if (!tovarlar.length) {
+    showError("xato-operatsiya", "Добавьте хотя бы один товар с количеством");
+    return;
+  }
+
+  try {
+    await apiPost("/api/operatsiyalar", { turi, izoh, tovarlar });
+    document.getElementById("operatsiya-panel").hidden = true;
+    showRoyxatBlok(true);
+    await refreshOperatsiyalar();
+  } catch (err) {
+    showError("xato-operatsiya", err.message);
+  }
+});
+
+let joriyFiltr = "";
+
+async function refreshOperatsiyalar() {
+  const url = joriyFiltr ? `/api/operatsiyalar?turi=${joriyFiltr}` : "/api/operatsiyalar";
+  const list = await apiGet(url);
+  const tbody = document.getElementById("operatsiyalar-jadval");
+  const turiLabel = {
+    kirim: '<span class="badge badge-kirim">Приём на склад</span>',
+    chiqim: '<span class="badge badge-chiqim">Отправка в Uzum</span>',
+    samovykup: '<span class="badge badge-samovykup">Самовыкуп</span>',
+    spisanie: '<span class="badge badge-spisanie">Списание</span>',
+    prodazha: '<span class="badge badge-prodazha">Прямая продажа</span>',
+  };
+  tbody.innerHTML = list.map(o => `
+    <tr class="clickable-row" onclick="location.href='/operatsiya/${o.id}'">
+      <td>${o.sana.slice(0,16)}</td>
+      <td>${turiLabel[o.turi]}</td>
+      <td>${o.tovar_soni}</td>
+      <td>${escapeHtml(o.izoh || "")}</td>
+    </tr>
+  `).join("") || "<tr><td colspan=4 class='empty-row'>Операций пока нет</td></tr>";
+}
+
+document.querySelectorAll("#operatsiya-filtr .filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    joriyFiltr = btn.dataset.turi;
+    document.querySelectorAll("#operatsiya-filtr .filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    refreshOperatsiyalar();
+  });
+});
+
+refreshOperatsiyalar();
+</script>
+{% endblock %}

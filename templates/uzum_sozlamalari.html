@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Uzum sozlamalari{% endblock %}
+{% block content %}
+  <div class="grid">
+    <div class="card full">
+      <div class="detail-header">
+        <h2 style="margin:0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Uzum sozlamalari
+        </h2>
+        <input type="text" id="mahsulot-qidiruv" placeholder="Найти товар..." style="max-width:220px;">
+      </div>
+      <div class="hint">
+        Har bir mahsulot uchun Uzum'dagi SKU kodini va IKPU (soliq) kodini kiriting — bu ma'lumotlar
+        aksiyalarga avtomatik qo'shish uchun ishlatiladi.
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="uzum-jadval">
+          <thead>
+            <tr><th>Товар</th><th>Uzum SKU</th><th>IKPU</th><th></th></tr>
+          </thead>
+          <tbody id="uzum-jadval-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+let mahsulotlarData = [];
+
+function renderMahsulotNomiCell(m) {
+  return `
+    <div class="mahsulot-cell">
+      ${m.rasm
+        ? `<img class="thumb" src="/static/uploads/${encodeURIComponent(m.rasm)}" alt="">`
+        : `<span class="thumb thumb-empty"></span>`}
+      <span>${escapeHtml(m.nomi)}</span>
+    </div>
+  `;
+}
+
+function renderRow(m) {
+  return `
+    <tr data-id="${m.id}">
+      <td>${renderMahsulotNomiCell(m)}</td>
+      <td><input type="text" class="f-uzum-sku" placeholder="SKU" value="${m.uzum_sku ? escapeHtml(m.uzum_sku) : ''}"></td>
+      <td><input type="text" class="f-ikpu" placeholder="IKPU" value="${m.ikpu ? escapeHtml(m.ikpu) : ''}"></td>
+      <td><span class="save-status"></span></td>
+    </tr>
+  `;
+}
+
+function joriyRoyxat() {
+  const soz = document.getElementById("mahsulot-qidiruv").value.trim().toLowerCase();
+  return soz ? mahsulotlarData.filter(m => m.nomi.toLowerCase().includes(soz)) : mahsulotlarData;
+}
+
+function renderJadval() {
+  const tbody = document.getElementById("uzum-jadval-tbody");
+  const royxat = joriyRoyxat();
+  const soz = document.getElementById("mahsulot-qidiruv").value.trim();
+  const boshEmpty = soz ? "Ничего не найдено" : "Товаров пока нет";
+
+  tbody.innerHTML = royxat.map(renderRow).join("")
+    || `<tr><td colspan=4 class='empty-row'>${boshEmpty}</td></tr>`;
+
+  tbody.querySelectorAll("tr[data-id]").forEach(tr => {
+    const id = tr.dataset.id;
+    const skuInput = tr.querySelector(".f-uzum-sku");
+    const ikpuInput = tr.querySelector(".f-ikpu");
+    const statusEl = tr.querySelector(".save-status");
+    const mahsulot = mahsulotlarData.find(m => String(m.id) === String(id));
+    let saqlashTimer = null;
+
+    async function saqlash() {
+      statusEl.textContent = "Сохранение…";
+      statusEl.className = "save-status";
+      try {
+        await apiSend("PATCH", `/api/mahsulotlar/${id}`, {
+          nomi: mahsulot.nomi,
+          uzum_sku: skuInput.value,
+          ikpu: ikpuInput.value,
+        });
+        statusEl.textContent = "Сохранено";
+        setTimeout(() => { statusEl.textContent = ""; }, 1500);
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = "save-status qoldiq-kam";
+      }
+    }
+
+    [skuInput, ikpuInput].forEach(input => {
+      input.addEventListener("input", () => {
+        clearTimeout(saqlashTimer);
+        saqlashTimer = setTimeout(saqlash, 700);
+      });
+    });
+  });
+}
+
+async function refreshJadval() {
+  mahsulotlarData = await apiGet("/api/mahsulotlar");
+  mahsulotlarData.sort((a, b) => a.nomi.localeCompare(b.nomi));
+  renderJadval();
+}
+
+document.getElementById("mahsulot-qidiruv").addEventListener("input", renderJadval);
+
+refreshJadval();
+</script>
+{% endblock %}

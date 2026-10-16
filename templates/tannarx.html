@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}Себестоимость{% endblock %}
+{% block content %}
+  <div class="grid">
+
+    <div class="card full">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16l-4-4 4-4"/><path d="M3 12h13"/><path d="M17 8l4 4-4 4"/><path d="M21 12H8"/></svg>
+        Себестоимость по операциям
+      </h2>
+      <table>
+        <thead><tr><th>Операция</th><th>Себестоимость</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge badge-kirim">Приём на склад</span></td><td id="stat-kirim-tannarx">—</td></tr>
+          <tr><td><span class="badge badge-chiqim">Отправка в Uzum</span></td><td id="stat-chiqim-tannarx">—</td></tr>
+          <tr><td><span class="badge badge-samovykup">Самовыкуп (возврат)</span></td><td id="stat-samovykup-tannarx">—</td></tr>
+          <tr><td><span class="badge badge-spisanie">Списание</span></td><td id="stat-spisanie-tannarx">—</td></tr>
+          <tr><td><span class="badge badge-prodazha">Прямая продажа</span></td><td id="stat-prodazha-tannarx">—</td></tr>
+          <tr><td>Себестоимость проданного (отправка + продажа − самовыкуп)</td><td id="stat-sotilgan-tannarx">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card full">
+      <div class="detail-header">
+        <h2 style="margin:0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>
+          Себестоимость товаров
+        </h2>
+        <div style="display:flex; align-items:center; gap:14px;">
+          <input type="text" id="mahsulot-qidiruv" placeholder="Найти товар..." style="max-width:200px;">
+          <div class="mini-stat">
+            <span class="mini-stat-label">Стоимость склада:</span>
+            <span class="mini-stat-value" id="stat-ombor-qiymati">—</span>
+          </div>
+          <button type="button" class="btn-secondary" id="btn-toliq-korinish">Полный расчёт</button>
+        </div>
+      </div>
+      <div class="hint" id="rejim-hint">Себестоимость и цена продажи защищены от случайного изменения — откройте «Полный расчёт», чтобы их поменять.</div>
+      <div style="overflow-x:auto;">
+        <table id="mahsulotlar-table">
+          <thead id="mahsulotlar-thead"></thead>
+          <tbody id="mahsulotlar-jadval"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+const KOMISSIYA_FOIZ = 0.25;
+const SOLIQ_FOIZ = 0.011;
+
+function formatSum(n) {
+  return Number(n).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " сум";
+}
+
+function hisoblaFullCalc(tannarx, sotish, logistika, boshqaHarajat) {
+  const komissiya = sotish * KOMISSIYA_FOIZ;
+  const soliq = sotish * SOLIQ_FOIZ;
+  const jami = komissiya + logistika + soliq + boshqaHarajat;
+  const tushum = sotish - jami;
+  const foyda = tushum - tannarx;
+  const foydaFoiz = sotish > 0 ? (foyda / sotish * 100) : 0;
+  return { komissiya, soliq, jami, tushum, foyda, foydaFoiz };
+}
+
+let mahsulotlarData = [];
+let toliqKorinish = false;
+
+function primeniSummary(data) {
+  document.getElementById("stat-ombor-qiymati").textContent = formatSum(data.ombor_qiymati);
+  document.getElementById("stat-kirim-tannarx").textContent = formatSum(data.kirim_tannarxi);
+  document.getElementById("stat-chiqim-tannarx").textContent = formatSum(data.chiqim_tannarxi);
+  document.getElementById("stat-samovykup-tannarx").textContent = formatSum(data.samovykup_tannarxi);
+  document.getElementById("stat-spisanie-tannarx").textContent = formatSum(data.spisanie_tannarxi);
+  document.getElementById("stat-prodazha-tannarx").textContent = formatSum(data.prodazha_tannarxi);
+  document.getElementById("stat-sotilgan-tannarx").textContent = formatSum(data.sotilgan_tannarx);
+}
+
+async function refreshHisobot() {
+  const data = await apiGet("/api/tannarx-hisobot");
+  mahsulotlarData = data.mahsulotlar;
+  primeniSummary(data);
+  renderJadval();
+}
+
+// saqlashdan keyin faqat summary'ni yangilaydi — jadvalni qayta chizmaydi,
+// shunda boshqa qatorda yozayotgan bo'lsangiz fokus yo'qolmaydi
+async function refreshSummaryOnly() {
+  const data = await apiGet("/api/tannarx-hisobot");
+  mahsulotlarData = data.mahsulotlar;
+  primeniSummary(data);
+}
+
+function renderMahsulotNomiCell(m) {
+  return `
+    <div class="mahsulot-cell">
+      ${m.rasm
+        ? `<img class="thumb" src="/static/uploads/${encodeURIComponent(m.rasm)}" alt="">`
+        : `<span class="thumb thumb-empty"></span>`}
+      <span>${escapeHtml(m.nomi)}</span>
+    </div>
+  `;
+}
+
+function renderProstoyRow(m) {
+  const c = hisoblaFullCalc(m.tannarx, m.sotish_narxi, m.logistika, m.boshqa_harajat);
+  return `
+    <tr data-id="${m.id}">
+      <td>${renderMahsulotNomiCell(m)}</td>
+      <td>${m.qoldiq}</td>
+      <td>${formatSum(m.tannarx)}</td>
+      <td>
+        <div class="sotish-cell">
+          <button type="button" class="copy-btn" data-copy="${m.sotish_narxi}" title="Копировать цену продажи" aria-label="Копировать цену продажи">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <span>${formatSum(m.sotish_narxi)}</span>
+        </div>
+      </td>
+      <td class="${c.foyda < 0 ? 'qoldiq-kam' : ''}">${formatSum(c.foyda)}</td>
+      <td class="${c.foyda < 0 ? 'qoldiq-kam' : ''}">${c.foydaFoiz.toFixed(1)}%</td>
+    </tr>
+  `;
+}
+
+function renderToliqRow(m) {
+  return `
+    <tr data-id="${m.id}">
+      <td>${renderMahsulotNomiCell(m)}</td>
+      <td>${m.qoldiq}</td>
+      <td><input type="number" class="f-narx-usd" min="0" step="0.01" value="${m.narx_usd}"></td>
+      <td><input type="number" class="f-kurs" min="0" step="1" value="${m.kurs}"></td>
+      <td class="f-tannarx-display"></td>
+      <td><input type="number" class="f-sotish" min="0" step="0.01" value="${m.sotish_narxi}"></td>
+      <td><input type="number" class="f-logistika" min="0" step="0.01" value="${m.logistika}"></td>
+      <td><input type="number" class="f-boshqa" min="0" step="0.01" value="${m.boshqa_harajat}"></td>
+      <td class="f-komissiya"></td>
+      <td class="f-soliq"></td>
+      <td class="f-jami"></td>
+      <td class="f-tushum"></td>
+      <td class="f-foyda"></td>
+      <td class="f-foyda-foiz"></td>
+      <td><span class="save-status"></span></td>
+    </tr>
+  `;
+}
+
+function qaytaHisoblaQator(tr) {
+  const narxUsd = Number(tr.querySelector(".f-narx-usd").value) || 0;
+  const kurs = Number(tr.querySelector(".f-kurs").value) || 0;
+  const tannarx = narxUsd * kurs;
+  const sotish = Number(tr.querySelector(".f-sotish").value) || 0;
+  const logistika = Number(tr.querySelector(".f-logistika").value) || 0;
+  const boshqa = Number(tr.querySelector(".f-boshqa").value) || 0;
+  const c = hisoblaFullCalc(tannarx, sotish, logistika, boshqa);
+  tr.querySelector(".f-tannarx-display").textContent = formatSum(tannarx);
+  tr.querySelector(".f-komissiya").textContent = formatSum(c.komissiya);
+  tr.querySelector(".f-soliq").textContent = formatSum(c.soliq);
+  tr.querySelector(".f-jami").textContent = formatSum(c.jami);
+  tr.querySelector(".f-tushum").textContent = formatSum(c.tushum);
+  const foydaCell = tr.querySelector(".f-foyda");
+  foydaCell.textContent = formatSum(c.foyda);
+  foydaCell.className = "f-foyda " + (c.foyda < 0 ? "qoldiq-kam" : "");
+  tr.querySelector(".f-foyda-foiz").textContent = c.foydaFoiz.toFixed(1) + "%";
+}
+
+function joriyRoyxat() {
+  const soz = document.getElementById("mahsulot-qidiruv").value.trim().toLowerCase();
+  return soz ? mahsulotlarData.filter(m => m.nomi.toLowerCase().includes(soz)) : mahsulotlarData;
+}
+
+function renderJadval() {
+  const thead = document.getElementById("mahsulotlar-thead");
+  const tbody = document.getElementById("mahsulotlar-jadval");
+  const royxat = joriyRoyxat();
+  const soz = document.getElementById("mahsulot-qidiruv").value.trim();
+  const boshEmpty = soz ? "Ничего не найдено" : "Товаров пока нет";
+
+  if (!toliqKorinish) {
+    thead.innerHTML = "<tr><th>Товар</th><th>Остаток</th><th>Себестоимость</th><th>Цена продажи</th><th>Прибыль</th><th>Прибыль %</th></tr>";
+    tbody.innerHTML = royxat.map(renderProstoyRow).join("")
+      || `<tr><td colspan=6 class='empty-row'>${boshEmpty}</td></tr>`;
+    return;
+  }
+
+  thead.innerHTML = `
+    <tr>
+      <th>Товар</th><th>Остаток</th><th>Цена, $</th><th>Курс</th><th>Себестоимость</th><th>Цена продажи</th>
+      <th>Логистика</th><th>Прочие расходы</th>
+      <th>Комиссия (${(KOMISSIYA_FOIZ*100).toFixed(0)}%)</th><th>Налог (${(SOLIQ_FOIZ*100).toFixed(1)}%)</th>
+      <th>Итого расходов</th><th>Выручка без расходов</th>
+      <th>Прибыль/1 шт</th><th>Прибыль %</th><th></th>
+    </tr>`;
+  tbody.innerHTML = royxat.map(renderToliqRow).join("")
+    || `<tr><td colspan=15 class='empty-row'>${boshEmpty}</td></tr>`;
+
+  tbody.querySelectorAll("tr[data-id]").forEach(tr => {
+    const id = tr.dataset.id;
+    const statusEl = tr.querySelector(".save-status");
+    let saqlashTimer = null;
+
+    async function avtoSaqlash() {
+      statusEl.textContent = "Сохранение…";
+      statusEl.className = "save-status";
+      try {
+        await apiSend("PATCH", `/api/mahsulotlar/${id}/narxlar`, {
+          narx_usd: tr.querySelector(".f-narx-usd").value,
+          kurs: tr.querySelector(".f-kurs").value,
+          sotish_narxi: tr.querySelector(".f-sotish").value,
+          logistika: tr.querySelector(".f-logistika").value,
+          boshqa_harajat: tr.querySelector(".f-boshqa").value,
+        });
+        await refreshSummaryOnly();
+        statusEl.textContent = "Сохранено";
+        setTimeout(() => { statusEl.textContent = ""; }, 1500);
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = "save-status qoldiq-kam";
+      }
+    }
+
+    tr.querySelectorAll("input").forEach(input => {
+      input.addEventListener("input", () => {
+        qaytaHisoblaQator(tr);
+        clearTimeout(saqlashTimer);
+        saqlashTimer = setTimeout(avtoSaqlash, 700);
+      });
+    });
+    qaytaHisoblaQator(tr);
+  });
+}
+
+document.getElementById("mahsulot-qidiruv").addEventListener("input", renderJadval);
+
+document.getElementById("btn-toliq-korinish").addEventListener("click", () => {
+  toliqKorinish = !toliqKorinish;
+  const btn = document.getElementById("btn-toliq-korinish");
+  btn.textContent = toliqKorinish ? "Свернуть" : "Полный расчёт";
+  document.getElementById("rejim-hint").style.display = toliqKorinish ? "none" : "block";
+  document.getElementById("page-container").classList.toggle("page-wide", toliqKorinish);
+  renderJadval();
+});
+
+document.getElementById("mahsulotlar-jadval").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".copy-btn");
+  if (!btn) return;
+  try {
+    await navigator.clipboard.writeText(btn.dataset.copy);
+    btn.classList.add("copied");
+    setTimeout(() => btn.classList.remove("copied"), 1000);
+  } catch (err) {
+    alert("Не удалось скопировать");
+  }
+});
+
+refreshHisobot();
+</script>
+{% endblock %}

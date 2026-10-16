@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Операция{% endblock %}
+{% block content %}
+  <a class="back-link" href="/ombor">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    Назад к складским операциям
+  </a>
+
+  <div class="grid">
+
+    <div class="card full">
+      <div class="detail-header">
+        <div class="detail-title-row">
+          <h2 id="operatsiya-sarlavha">…</h2>
+        </div>
+        <button type="button" class="icon-btn danger" id="btn-ochirish" title="Удалить операцию" aria-label="Удалить операцию">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        </button>
+      </div>
+      <div class="hint" id="operatsiya-izoh-korsatish" style="display:none;"></div>
+    </div>
+
+    <div class="card full">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>
+        Товары в этой операции
+      </h2>
+      <table>
+        <thead><tr><th>Товар</th><th>Количество</th><th></th></tr></thead>
+        <tbody id="tovarlar-jadval"></tbody>
+      </table>
+
+      <div class="form-row" style="margin-top:16px;">
+        <div class="field field-grow">
+          <label>Добавить товар</label>
+          <div class="tovar-combo" id="qoshish-combo">
+            <input type="text" class="tovar-mahsulot-search" id="qoshish-search" placeholder="Найти товар..." autocomplete="off">
+            <input type="hidden" id="qoshish-mahsulot-id">
+            <div class="tovar-dropdown" id="qoshish-dropdown" hidden></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Количество</label>
+          <input type="number" id="qoshish-miqdor" min="1" style="width:100px;">
+        </div>
+        <button type="button" id="btn-tovar-qoshish">Добавить</button>
+      </div>
+      <div class="xato" id="xato-qoshish"></div>
+    </div>
+
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+const operatsiyaId = {{ operatsiya_id }};
+let mahsulotlarCache = [];
+
+const turiLabel = {
+  kirim: '<span class="badge badge-kirim">Приём на склад</span>',
+  chiqim: '<span class="badge badge-chiqim">Отправка в Uzum</span>',
+  samovykup: '<span class="badge badge-samovykup">Самовыкуп</span>',
+  spisanie: '<span class="badge badge-spisanie">Списание</span>',
+  prodazha: '<span class="badge badge-prodazha">Прямая продажа</span>',
+};
+
+async function refreshOperatsiya() {
+  const o = await apiGet(`/api/operatsiyalar/${operatsiyaId}`);
+  if (o.xato) { location.href = "/ombor"; return; }
+
+  document.getElementById("operatsiya-sarlavha").innerHTML =
+    `${turiLabel[o.turi]} <span style="color:var(--text-muted); font-weight:400; font-size:14px;">${o.sana.slice(0,16)}</span>`;
+
+  const izohEl = document.getElementById("operatsiya-izoh-korsatish");
+  if (o.izoh) {
+    izohEl.textContent = o.izoh;
+    izohEl.style.display = "block";
+  } else {
+    izohEl.style.display = "none";
+  }
+
+  const tbody = document.getElementById("tovarlar-jadval");
+  tbody.innerHTML = o.tovarlar.map(t => `
+    <tr data-harakat-id="${t.id}">
+      <td>
+        <a class="mahsulot-cell" href="/mahsulot/${t.mahsulot_id}" style="text-decoration:none; color:inherit;">
+          ${t.mahsulot_rasm
+            ? `<img class="thumb" src="/static/uploads/${encodeURIComponent(t.mahsulot_rasm)}" alt="">`
+            : `<span class="thumb thumb-empty"></span>`}
+          <span>${escapeHtml(t.mahsulot_nomi)}</span>
+        </a>
+      </td>
+      <td><input type="number" class="miqdor-input" min="1" value="${t.miqdor}" style="width:90px;"></td>
+      <td>
+        <button type="button" class="icon-btn danger tovar-ochirish" title="Удалить товар из операции" aria-label="Удалить товар из операции">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </td>
+    </tr>
+  `).join("") || "<tr><td colspan=3 class='empty-row'>Товаров нет</td></tr>";
+
+  tbody.querySelectorAll("tr[data-harakat-id]").forEach(tr => {
+    const harakatId = tr.dataset.harakatId;
+    const input = tr.querySelector(".miqdor-input");
+    let eskiQiymat = input.value;
+
+    async function saqlaMiqdor() {
+      if (input.value === eskiQiymat) return;
+      try {
+        await apiSend("PATCH", `/api/ombor/${harakatId}`, { miqdor: input.value });
+        eskiQiymat = input.value;
+        await refreshOperatsiya();
+      } catch (err) {
+        alert(err.message);
+        input.value = eskiQiymat;
+      }
+    }
+    input.addEventListener("blur", saqlaMiqdor);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    });
+
+    tr.querySelector(".tovar-ochirish").addEventListener("click", async () => {
+      if (!confirm("Удалить этот товар из операции?")) return;
+      try {
+        await apiSend("DELETE", `/api/ombor/${harakatId}`);
+        await refreshOperatsiya();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+}
+
+// ---- yangi tovar qo'shish (qidiruvli combo) ----
+async function loadMahsulotlarCache() {
+  mahsulotlarCache = await apiGet("/api/mahsulotlar");
+}
+
+const qoshishSearch = document.getElementById("qoshish-search");
+const qoshishId = document.getElementById("qoshish-mahsulot-id");
+const qoshishDropdown = document.getElementById("qoshish-dropdown");
+
+function renderQoshishDropdown() {
+  const q = qoshishSearch.value.trim().toLowerCase();
+  const matches = mahsulotlarCache.filter(m => m.nomi.toLowerCase().includes(q));
+  qoshishDropdown.innerHTML = matches.length
+    ? matches.map(m => `<div class="tovar-dropdown-item" data-id="${m.id}" data-nomi="${escapeHtml(m.nomi)}">${escapeHtml(m.nomi)}</div>`).join("")
+    : `<div class="tovar-dropdown-empty">Ничего не найдено</div>`;
+  qoshishDropdown.hidden = false;
+}
+
+qoshishSearch.addEventListener("focus", renderQoshishDropdown);
+qoshishSearch.addEventListener("input", () => {
+  qoshishId.value = "";
+  renderQoshishDropdown();
+});
+qoshishSearch.addEventListener("blur", () => {
+  setTimeout(() => { qoshishDropdown.hidden = true; }, 150);
+});
+qoshishDropdown.addEventListener("mousedown", (e) => {
+  const item = e.target.closest(".tovar-dropdown-item");
+  if (!item) return;
+  e.preventDefault();
+  qoshishId.value = item.dataset.id;
+  qoshishSearch.value = item.dataset.nomi;
+  qoshishDropdown.hidden = true;
+});
+
+document.getElementById("btn-tovar-qoshish").addEventListener("click", async () => {
+  showError("xato-qoshish", "");
+  const mahsulot_id = qoshishId.value;
+  const miqdor = document.getElementById("qoshish-miqdor").value;
+  if (!mahsulot_id) { showError("xato-qoshish", "Выберите товар из списка"); return; }
+  if (!miqdor || Number(miqdor) <= 0) { showError("xato-qoshish", "Укажите количество"); return; }
+  try {
+    await apiSend("POST", `/api/operatsiyalar/${operatsiyaId}/tovarlar`, { mahsulot_id, miqdor });
+    qoshishSearch.value = "";
+    qoshishId.value = "";
+    document.getElementById("qoshish-miqdor").value = "";
+    await refreshOperatsiya();
+  } catch (err) {
+    showError("xato-qoshish", err.message);
+  }
+});
+
+document.getElementById("btn-ochirish").addEventListener("click", async () => {
+  if (!confirm("Удалить эту операцию? Остатки товаров на складе будут пересчитаны обратно.")) return;
+  try {
+    await apiSend("DELETE", `/api/operatsiyalar/${operatsiyaId}`);
+    location.href = "/ombor";
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+loadMahsulotlarCache();
+refreshOperatsiya();
+</script>
+{% endblock %}
