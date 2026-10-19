@@ -5,15 +5,16 @@ Bu faylning MAZMUNINI (pastdagi kodni to'liq) PythonAnywhere'ning "Web" bo'limid
 WSGI konfiguratsiya fayliga (masalan /var/www/zedloop_pythonanywhere_com_wsgi.py)
 TO'LIQ ALMASHTIRIB qo'ying - eski mazmunini o'chirib, shuni joylashtiring.
 
-Nega bunday murakkab: uchta alohida loyiha (ERP, review-agent, promo-agent)
-bitta Python jarayonida ishlaydi, lekin har birida bir xil nomli fayllar bor
-(masalan ikkalasida ham config.py, main.py, webapp.py, uzum_auth.py bor).
-Agar ularni oddiy import qilsak, ikkinchisi birinchisining modullarini "bosib"
-qo'yadi (masalan promo-agent review-agent'ning config'ini ishlatib qolishi
-mumkin edi - bu juda xavfli xato bo'lardi, chunki API kalitlari aralashib
-ketadi). Shuning uchun har bir loyiha o'z-o'zidan ALOHIDA, izolyatsiya qilingan
-holda yuklanadi (har birini yuklagandan keyin uning modullarini xotiradan
-tozalab, keyingisiga tayyor holga keltiramiz).
+Nega bunday murakkab: ikkita alohida loyiha (ERP, review-agent) bitta Python
+jarayonida ishlaydi, lekin ikkalasida ham bir xil nomli fayllar bor (masalan
+config.py, main.py, webapp.py, uzum_auth.py). Agar ularni oddiy import qilsak,
+ikkinchisi birinchisining modullarini "bosib" qo'yadi (API kalitlari aralashib
+ketishi mumkin edi). Shuning uchun har bir loyiha o'z-o'zidan ALOHIDA,
+izolyatsiya qilingan holda yuklanadi.
+
+Eslatma: promo-agent endi bu serverda emas - u alohida VPS'da (Hetzner)
+ishlaydi, chunki PythonAnywhere'ning bepul tarifi Uzum'ning marketing
+API'siga (api.uzum.uz) chiqishni bloklaydi.
 """
 import importlib
 import os
@@ -29,7 +30,6 @@ HOME = Path(f"/home/{PA_USERNAME}")
 PROJECTS = {
     "erp": HOME / "bs-store",
     "review": HOME / "uzum-review-agent",
-    "promo": HOME / "uzum-promo-agent",
 }
 
 
@@ -72,9 +72,7 @@ def load_app(project_dir, module_name, attr="app"):
 
 erp_app = load_app(PROJECTS["erp"], "app", "app")
 review_app = load_app(PROJECTS["review"], "webapp", "app")
-promo_app = load_app(PROJECTS["promo"], "webapp", "app")
 
 application = DispatcherMiddleware(erp_app, {
     "/review": review_app,
-    "/promo": promo_app,
 })
