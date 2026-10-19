@@ -43,11 +43,12 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 ERP_PASSWORD = os.environ["ERP_PASSWORD"]
+ERP_API_TOKEN = os.environ["ERP_API_TOKEN"]
 
 
 @app.before_request
 def himoyalash():
-    if request.endpoint in ("login", "static"):
+    if request.endpoint in ("login", "static", "uzum_prices_api"):
         return
     if not session.get("authed"):
         return redirect(url_for("login"))
@@ -69,6 +70,33 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/api/uzum-prices")
+def uzum_prices_api():
+    """promo-agent (boshqa serverda ishlaydi) ERP narxlarini shu orqali
+    oladi - sessiya (login) emas, maxfiy token orqali himoyalangan."""
+    if request.args.get("token") != ERP_API_TOKEN:
+        return jsonify({"error": "forbidden"}), 403
+
+    db = get_db()
+    rows = db.execute(
+        "SELECT uzum_sku, sotish_narxi, tannarx, logistika, boshqa_harajat, nomi, ikpu "
+        "FROM mahsulotlar WHERE uzum_sku IS NOT NULL AND TRIM(uzum_sku) != ''"
+    ).fetchall()
+
+    prices = {}
+    for row in rows:
+        sku = row["uzum_sku"].strip()
+        prices[sku] = {
+            "sale_price": row["sotish_narxi"],
+            "tannarx": row["tannarx"],
+            "logistika": row["logistika"],
+            "boshqa_harajat": row["boshqa_harajat"],
+            "nomi": row["nomi"],
+            "ikpu": (row["ikpu"] or "").strip() or None,
+        }
+    return jsonify(prices)
 
 
 def get_db():
