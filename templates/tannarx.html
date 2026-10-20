@@ -49,15 +49,21 @@
 {% endblock %}
 {% block script %}
 <script>
-const KOMISSIYA_FOIZ = 0.25;
+// Komissiya har mahsulotda alohida (Uzum kategoriyasiga qarab), shu faqat
+// eski yozuvlarda qiymat bo'lmasa ishlatiladi
+const STANDART_KOMISSIYA_FOIZ = 25;
 const SOLIQ_FOIZ = 0.011;
 
 function formatSum(n) {
   return Number(n).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " сум";
 }
 
-function hisoblaFullCalc(tannarx, sotish, logistika, boshqaHarajat) {
-  const komissiya = sotish * KOMISSIYA_FOIZ;
+function komissiyaFoizi(m) {
+  return m.komissiya_foiz ?? STANDART_KOMISSIYA_FOIZ;
+}
+
+function hisoblaFullCalc(tannarx, sotish, logistika, boshqaHarajat, komissiyaFoiz) {
+  const komissiya = sotish * komissiyaFoiz / 100;
   const soliq = sotish * SOLIQ_FOIZ;
   const jami = komissiya + logistika + soliq + boshqaHarajat;
   const tushum = sotish - jami;
@@ -106,7 +112,7 @@ function renderMahsulotNomiCell(m) {
 }
 
 function renderProstoyRow(m) {
-  const c = hisoblaFullCalc(m.tannarx, m.sotish_narxi, m.logistika, m.boshqa_harajat);
+  const c = hisoblaFullCalc(m.tannarx, m.sotish_narxi, m.logistika, m.boshqa_harajat, komissiyaFoizi(m));
   return `
     <tr data-id="${m.id}">
       <td>${renderMahsulotNomiCell(m)}</td>
@@ -137,6 +143,7 @@ function renderToliqRow(m) {
       <td><input type="number" class="f-sotish" min="0" step="0.01" value="${m.sotish_narxi}"></td>
       <td><input type="number" class="f-logistika" min="0" step="0.01" value="${m.logistika}"></td>
       <td><input type="number" class="f-boshqa" min="0" step="0.01" value="${m.boshqa_harajat}"></td>
+      <td><input type="number" class="f-komissiya-foiz" min="0" max="100" step="0.1" value="${komissiyaFoizi(m)}" style="width:70px;"></td>
       <td class="f-komissiya"></td>
       <td class="f-soliq"></td>
       <td class="f-jami"></td>
@@ -155,7 +162,8 @@ function qaytaHisoblaQator(tr) {
   const sotish = Number(tr.querySelector(".f-sotish").value) || 0;
   const logistika = Number(tr.querySelector(".f-logistika").value) || 0;
   const boshqa = Number(tr.querySelector(".f-boshqa").value) || 0;
-  const c = hisoblaFullCalc(tannarx, sotish, logistika, boshqa);
+  const komissiyaFoiz = Number(tr.querySelector(".f-komissiya-foiz").value) || 0;
+  const c = hisoblaFullCalc(tannarx, sotish, logistika, boshqa, komissiyaFoiz);
   tr.querySelector(".f-tannarx-display").textContent = formatSum(tannarx);
   tr.querySelector(".f-komissiya").textContent = formatSum(c.komissiya);
   tr.querySelector(".f-soliq").textContent = formatSum(c.soliq);
@@ -190,12 +198,12 @@ function renderJadval() {
     <tr>
       <th>Товар</th><th>Остаток</th><th>Цена, $</th><th>Курс</th><th>Себестоимость</th><th>Цена продажи</th>
       <th>Логистика</th><th>Прочие расходы</th>
-      <th>Комиссия (${(KOMISSIYA_FOIZ*100).toFixed(0)}%)</th><th>Налог (${(SOLIQ_FOIZ*100).toFixed(1)}%)</th>
+      <th>Комиссия, %</th><th>Комиссия</th><th>Налог (${(SOLIQ_FOIZ*100).toFixed(1)}%)</th>
       <th>Итого расходов</th><th>Выручка без расходов</th>
       <th>Прибыль/1 шт</th><th>Прибыль %</th><th></th>
     </tr>`;
   tbody.innerHTML = royxat.map(renderToliqRow).join("")
-    || `<tr><td colspan=15 class='empty-row'>${boshEmpty}</td></tr>`;
+    || `<tr><td colspan=16 class='empty-row'>${boshEmpty}</td></tr>`;
 
   tbody.querySelectorAll("tr[data-id]").forEach(tr => {
     const id = tr.dataset.id;
@@ -212,6 +220,7 @@ function renderJadval() {
           sotish_narxi: tr.querySelector(".f-sotish").value,
           logistika: tr.querySelector(".f-logistika").value,
           boshqa_harajat: tr.querySelector(".f-boshqa").value,
+          komissiya_foiz: tr.querySelector(".f-komissiya-foiz").value,
         });
         await refreshSummaryOnly();
         statusEl.textContent = "Сохранено";

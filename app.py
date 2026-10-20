@@ -81,7 +81,7 @@ def uzum_prices_api():
 
     db = get_db()
     rows = db.execute(
-        "SELECT uzum_sku, sotish_narxi, tannarx, logistika, boshqa_harajat, nomi, ikpu "
+        "SELECT uzum_sku, sotish_narxi, tannarx, logistika, boshqa_harajat, komissiya_foiz, nomi, ikpu "
         "FROM mahsulotlar WHERE uzum_sku IS NOT NULL AND TRIM(uzum_sku) != ''"
     ).fetchall()
 
@@ -93,6 +93,7 @@ def uzum_prices_api():
             "tannarx": row["tannarx"],
             "logistika": row["logistika"],
             "boshqa_harajat": row["boshqa_harajat"],
+            "komissiya_foiz": row["komissiya_foiz"],
             "nomi": row["nomi"],
             "ikpu": (row["ikpu"] or "").strip() or None,
         }
@@ -136,6 +137,8 @@ def init_db():
             db.execute("ALTER TABLE mahsulotlar ADD COLUMN uzum_sku TEXT")
         if "ikpu" not in mahsulot_ustunlari:
             db.execute("ALTER TABLE mahsulotlar ADD COLUMN ikpu TEXT")
+        if "komissiya_foiz" not in mahsulot_ustunlari:
+            db.execute("ALTER TABLE mahsulotlar ADD COLUMN komissiya_foiz REAL NOT NULL DEFAULT 25")
         ombor_ustunlari = [r[1] for r in db.execute("PRAGMA table_info(ombor_harakatlari)")]
         if "operatsiya_id" not in ombor_ustunlari:
             db.execute(
@@ -317,10 +320,14 @@ def update_narxlar(mahsulot_id):
         sotish_narxi = float(data.get("sotish_narxi"))
         logistika = float(data.get("logistika"))
         boshqa_harajat = float(data.get("boshqa_harajat"))
-        if min(narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat) < 0:
+        # Uzum komissiyasi kategoriyaga qarab har xil - har mahsulotga qo'lda
+        komissiya_foiz = float(data.get("komissiya_foiz", 25))
+        if min(narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, komissiya_foiz) < 0:
             raise ValueError
     except (TypeError, ValueError):
         return jsonify({"xato": "Все значения должны быть числами не меньше 0"}), 400
+    if komissiya_foiz > 100:
+        return jsonify({"xato": "Комиссия не может быть больше 100%"}), 400
 
     tannarx = narx_usd * kurs
 
@@ -332,9 +339,10 @@ def update_narxlar(mahsulot_id):
         return jsonify({"xato": "Товар не найден"}), 404
     db.execute(
         """UPDATE mahsulotlar
-           SET tannarx = ?, narx_usd = ?, kurs = ?, sotish_narxi = ?, logistika = ?, boshqa_harajat = ?
+           SET tannarx = ?, narx_usd = ?, kurs = ?, sotish_narxi = ?, logistika = ?, boshqa_harajat = ?,
+               komissiya_foiz = ?
            WHERE id = ?""",
-        (tannarx, narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, mahsulot_id),
+        (tannarx, narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, komissiya_foiz, mahsulot_id),
     )
     db.commit()
     return jsonify({
@@ -345,6 +353,7 @@ def update_narxlar(mahsulot_id):
         "sotish_narxi": sotish_narxi,
         "logistika": logistika,
         "boshqa_harajat": boshqa_harajat,
+        "komissiya_foiz": komissiya_foiz,
     })
 
 
@@ -676,7 +685,8 @@ def delete_ombor_harakat(harakat_id):
 def tannarx_hisobot():
     db = get_db()
     mahsulotlar_qatorlari = db.execute(
-        """SELECT id, nomi, qoldiq, tannarx, narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, rasm
+        """SELECT id, nomi, qoldiq, tannarx, narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat,
+                  komissiya_foiz, rasm
            FROM mahsulotlar"""
     ).fetchall()
     mahsulotlar = [dict(r) for r in mahsulotlar_qatorlari]
@@ -763,6 +773,13 @@ def add_kassa_harakat():
     return jsonify({"ok": True}), 201
 
 
-if __name__ == "__main__":
+# gunicorn ostida ham (faqat "python app.py" da emas) yangi ustunlar
+# qo'shilsin. Ikki worker bir vaqtda ishga tushsa, biri ALTER'ni ikkinchisidan
+# oldin bajarib qo'yishi mumkin - unda ikkinchisining xatosi zararsiz.
+try:
     init_db()
+except sqlite3.OperationalError:
+    pass
+
+if __name__ == "__main__":
     app.run(debug=True, port=5000)
