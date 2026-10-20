@@ -87,7 +87,7 @@ def uzum_prices_api():
 
     prices = {}
     for row in rows:
-        sku = row["uzum_sku"].strip()
+        sku = row["uzum_sku"].split()[0]
         prices[sku] = {
             "sale_price": row["sotish_narxi"],
             "tannarx": row["tannarx"],
@@ -270,7 +270,10 @@ def update_mahsulot(mahsulot_id):
     nomi = (data.get("nomi") or "").strip()
     if not nomi:
         return jsonify({"xato": "Укажите название товара"}), 400
-    uzum_sku = (data.get("uzum_sku") or "").strip() or None
+    # SKU kodida bo'shliq bo'lmaydi - Uzum sahifasidan nusxa olganda ketidan
+    # narx va "Aksiyada — Sotuvdagi" yozuvi ham qo'shilib qolishi mumkin,
+    # shuning uchun faqat birinchi so'zni (kodning o'zini) olamiz.
+    uzum_sku = ((data.get("uzum_sku") or "").split() or [None])[0]
     ikpu = (data.get("ikpu") or "").strip() or None
     db = get_db()
     mahsulot = db.execute(
