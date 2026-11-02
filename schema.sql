@@ -86,3 +86,28 @@ CREATE TABLE IF NOT EXISTS jurnal (
     amal TEXT NOT NULL,
     tafsilot TEXT
 );
+
+-- Kontragentlar (yetkazib beruvchi va h.k.) bilan hisob-kitob.
+-- Balans = MEN unga qancha qarzdorman: musbat - men qarzdorman, manfiy - u menga qarzdor (oldindan to'lov).
+-- turi = 'tovar_oldim' -> balans ORTADI   (tovarni qarzga oldim)
+-- turi = 'tolov'       -> balans KAMAYADI (unga pul berdim)
+-- turi = 'pul_oldim'   -> balans ORTADI   (undan pul oldim / qaytardi)
+-- turi = 'spisanie'    -> balans 0 tomon  (qarz/haqni hisobdan chiqarish)
+CREATE TABLE IF NOT EXISTS kontragentlar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nomi TEXT NOT NULL,
+    telefon TEXT,
+    izoh TEXT,
+    yaratilgan TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS kontragent_harakatlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kontragent_id INTEGER NOT NULL REFERENCES kontragentlar(id),
+    sana TEXT NOT NULL DEFAULT (datetime('now')),
+    turi TEXT NOT NULL CHECK(turi IN ('tovar_oldim', 'tolov', 'pul_oldim', 'spisanie')),
+    summa REAL NOT NULL CHECK(summa > 0),
+    belgi INTEGER NOT NULL CHECK(belgi IN (1, -1)),
+    izoh TEXT,
+    kassa_id INTEGER REFERENCES kassa_harakatlari(id)
+);

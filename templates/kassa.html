@@ -44,6 +44,29 @@
       <div class="xato" id="xato-kassa"></div>
     </div>
 
+    <div class="card full">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>
+        Контрагенты
+      </h2>
+      <form id="form-kontragent">
+        <div class="field field-grow">
+          <label for="kontragent-nomi">Имя / название</label>
+          <input type="text" id="kontragent-nomi" placeholder="Например: Озод" required>
+        </div>
+        <div class="field">
+          <label for="kontragent-telefon">Телефон</label>
+          <input type="text" id="kontragent-telefon" placeholder="Необязательно">
+        </div>
+        <button type="submit">Добавить контрагента</button>
+      </form>
+      <div class="xato" id="xato-kontragent"></div>
+      <table>
+        <thead><tr><th>Контрагент</th><th>Телефон</th><th>Баланс</th><th>Последняя операция</th></tr></thead>
+        <tbody id="kontragentlar-jadval"></tbody>
+      </table>
+    </div>
+
   </div>
 {% endblock %}
 {% block script %}
@@ -77,6 +100,33 @@ document.getElementById("form-kassa").addEventListener("submit", async (e) => {
   } catch (err) { showError("xato-kassa", err.message); }
 });
 
+function kontragentBalans(b) {
+  const s = Math.abs(b).toLocaleString("ru-RU") + " сум";
+  if (b > 0.5) return `<span class="qoldiq-kam">Я должен ${s}</span>`;
+  if (b < -0.5) return `<span style="color:var(--success);font-weight:650">Мне должны ${s}</span>`;
+  return `<span style="color:var(--text-muted)">Расчёт закрыт</span>`;
+}
+
+async function refreshKontragentlar() {
+  const rows = await apiGet("/api/kontragentlar");
+  document.getElementById("kontragentlar-jadval").innerHTML = rows.map(k =>
+    `<tr class="clickable-row" onclick="location.href='/kontragent/${k.id}'"><td><b>${escapeHtml(k.nomi)}</b></td><td>${escapeHtml(k.telefon || "")}</td><td>${kontragentBalans(k.balans)}</td><td>${k.oxirgi ? k.oxirgi.slice(0,16) : "—"}</td></tr>`
+  ).join("") || "<tr><td colspan=4 class='empty-row'>Контрагентов пока нет</td></tr>";
+}
+
+document.getElementById("form-kontragent").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  showError("xato-kontragent", "");
+  try {
+    const res = await apiPost("/api/kontragentlar", {
+      nomi: document.getElementById("kontragent-nomi").value.trim(),
+      telefon: document.getElementById("kontragent-telefon").value.trim(),
+    });
+    location.href = "/kontragent/" + res.id;
+  } catch (err) { showError("xato-kontragent", err.message); }
+});
+
 refreshKassa();
+refreshKontragentlar();
 </script>
 {% endblock %}

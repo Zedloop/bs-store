@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Контрагент{% endblock %}
+{% block content %}
+  <a class="back-link" href="/kassa">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    Назад к кассе
+  </a>
+
+  <div class="grid">
+
+    <div class="card">
+      <div class="detail-header">
+        <div class="detail-title-row">
+          <h2 id="kontragent-nomi">…</h2>
+          <span class="hint" id="kontragent-telefon" style="display:none; margin:0;"></span>
+        </div>
+        <button type="button" class="icon-btn danger" id="btn-kontragent-ochirish" title="Удалить контрагента" aria-label="Удалить контрагента">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        </button>
+      </div>
+      <div class="balans-wrap" id="balans-wrap">
+        <div class="balans-label" id="balans-label">Баланс</div>
+        <div class="balans" id="balans">—</div>
+      </div>
+      <div class="xato" id="xato-ochirish"></div>
+    </div>
+
+    <div class="card">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        Новая операция
+      </h2>
+      <form id="form-kontragent-harakat">
+        <div class="field">
+          <label for="h-turi">Что произошло</label>
+          <select id="h-turi">
+            <option value="tovar_oldim">Взял товар в долг</option>
+            <option value="tolov">Оплатил (отдал деньги)</option>
+            <option value="pul_oldim">Получил от него деньги</option>
+            <option value="spisanie">Списание долга</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="h-summa">Сумма, сум</label>
+          <input type="number" id="h-summa" placeholder="0" min="1" step="0.01" required>
+        </div>
+        <div class="field field-grow">
+          <label for="h-izoh">Комментарий</label>
+          <input type="text" id="h-izoh" placeholder="Например: 50 шт K9">
+        </div>
+        <button type="submit">Сохранить</button>
+      </form>
+      <label id="kassa-wrap" style="display:flex; align-items:center; gap:8px; font-size:13px; margin:-6px 0 10px; cursor:pointer;">
+        <input type="checkbox" id="h-kassa" checked style="width:auto;">
+        <span id="kassa-matn">Провести через кассу</span>
+      </label>
+      <div class="hint" id="h-hint" style="display:block;"></div>
+      <div class="xato" id="xato-harakat"></div>
+    </div>
+
+    <div class="card full">
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>
+        История операций
+      </h2>
+      <table>
+        <thead><tr><th>Дата</th><th>Операция</th><th>Сумма</th><th>Долг после</th><th>Комментарий</th><th></th></tr></thead>
+        <tbody id="harakatlar-jadval"></tbody>
+      </table>
+    </div>
+
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+const KONTRAGENT_ID = {{ kontragent_id }};
+const TURLAR = {
+  tovar_oldim: { nomi: "Взял товар в долг", badge: "badge-chiqim", hint: "Мой долг перед ним увеличится." },
+  tolov:       { nomi: "Оплатил",           badge: "badge-kirim",  hint: "Мой долг уменьшится. Если заплатил больше долга — он будет должен мне.", kassa: "Списать сумму из кассы (расход)" },
+  pul_oldim:   { nomi: "Получил деньги",    badge: "badge-samovykup", hint: "Например, вернул переплату. Его долг мне уменьшится (или мой долг вырастет).", kassa: "Добавить сумму в кассу (приход)" },
+  spisanie:    { nomi: "Списание",          badge: "badge-spisanie", hint: "" },
+};
+let balans = 0;
+
+function som(v) { return Math.abs(v).toLocaleString("ru-RU") + " сум"; }
+
+function holat(b) {
+  if (b > 0.5) return { label: "Я должен ему", cls: "manfiy" };
+  if (b < -0.5) return { label: "Он должен мне", cls: "musbat" };
+  return { label: "Расчёт закрыт", cls: "" };
+}
+
+function turiOzgardi() {
+  const t = TURLAR[document.getElementById("h-turi").value];
+  const turi = document.getElementById("h-turi").value;
+  document.getElementById("kassa-wrap").style.display = t.kassa ? "flex" : "none";
+  if (t.kassa) document.getElementById("kassa-matn").textContent = t.kassa;
+  let hint = t.hint;
+  if (turi === "spisanie") {
+    if (balans > 0.5) hint = `Списать мой долг (без оплаты). Максимум: ${som(balans)}.`;
+    else if (balans < -0.5) hint = `Списать его долг передо мной (например, переплату). Максимум: ${som(balans)}.`;
+    else hint = "Долга нет — списывать нечего.";
+  }
+  document.getElementById("h-hint").textContent = hint;
+}
+
+async function refresh() {
+  const data = await apiGet(`/api/kontragentlar/${KONTRAGENT_ID}`);
+  if (data.xato) { document.getElementById("kontragent-nomi").textContent = data.xato; return; }
+  const k = data.kontragent;
+  balans = k.balans;
+  document.title = k.nomi + " — склад и касса";
+  document.getElementById("kontragent-nomi").textContent = k.nomi;
+  const tel = document.getElementById("kontragent-telefon");
+  tel.textContent = k.telefon || "";
+  tel.style.display = k.telefon ? "inline" : "none";
+
+  const h = holat(balans);
+  document.getElementById("balans-label").textContent = h.label;
+  document.getElementById("balans").textContent = som(balans);
+  document.getElementById("balans").className = "balans " + h.cls;
+  document.getElementById("balans-wrap").className = "balans-wrap " + (h.cls === "manfiy" ? "manfiy" : "");
+
+  // "Долг после" - har bir operatsiyadan keyingi balans (eng yangisidan orqaga hisoblaymiz)
+  let keyin = balans;
+  document.getElementById("harakatlar-jadval").innerHTML = data.harakatlar.map(r => {
+    const t = TURLAR[r.turi];
+    const qator = `<tr>
+      <td>${r.sana.slice(0,16)}</td>
+      <td><span class="badge ${t.badge}">${t.nomi}</span>${r.kassa_id ? ' <span class="hint" style="display:inline;margin:0">· касса</span>' : ""}</td>
+      <td>${r.belgi > 0 ? "+" : "−"}${r.summa.toLocaleString("ru-RU")}</td>
+      <td>${Math.abs(keyin) < 0.5 ? "0" : (keyin > 0 ? "Я должен " : "Мне должны ") + som(keyin)}</td>
+      <td>${escapeHtml(r.izoh || "")}</td>
+      <td><button type="button" class="icon-btn danger harakat-ochirish" title="Удалить" onclick="harakatOchir(${r.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></td>
+    </tr>`;
+    keyin -= r.summa * r.belgi;
+    return qator;
+  }).join("") || "<tr><td colspan=6 class='empty-row'>Операций пока нет</td></tr>";
+  turiOzgardi();
+}
+
+async function harakatOchir(id) {
+  if (!confirm("Удалить операцию? Если она была проведена через кассу, запись в кассе тоже удалится.")) return;
+  try { await apiSend("DELETE", `/api/kontragent-harakat/${id}`); await refresh(); }
+  catch (err) { alert(err.message); }
+}
+
+document.getElementById("h-turi").addEventListener("change", turiOzgardi);
+
+document.getElementById("form-kontragent-harakat").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  showError("xato-harakat", "");
+  try {
+    await apiPost(`/api/kontragentlar/${KONTRAGENT_ID}/harakat`, {
+      turi: document.getElementById("h-turi").value,
+      summa: document.getElementById("h-summa").value,
+      izoh: document.getElementById("h-izoh").value.trim(),
+      kassa: document.getElementById("h-kassa").checked,
+    });
+    document.getElementById("h-summa").value = "";
+    document.getElementById("h-izoh").value = "";
+    await refresh();
+  } catch (err) { showError("xato-harakat", err.message); }
+});
+
+document.getElementById("btn-kontragent-ochirish").addEventListener("click", async () => {
+  if (!confirm("Удалить контрагента?")) return;
+  showError("xato-ochirish", "");
+  try { await apiSend("DELETE", `/api/kontragentlar/${KONTRAGENT_ID}`); location.href = "/kassa"; }
+  catch (err) { showError("xato-ochirish", err.message); }
+});
+
+refresh();
+</script>
+{% endblock %}

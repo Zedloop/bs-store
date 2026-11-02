@@ -552,7 +552,11 @@
   body[data-rol="kuzatuvchi"] #form-ombor,
   body[data-rol="kuzatuvchi"] #btn-ochirish,
   body[data-rol="kuzatuvchi"] .tovar-ochirish,
-  body[data-rol="kuzatuvchi"] #btn-tovar-qoshish { display: none !important; }
+  body[data-rol="kuzatuvchi"] #btn-tovar-qoshish,
+  body[data-rol="kuzatuvchi"] #form-kontragent,
+  body[data-rol="kuzatuvchi"] .card:has(#form-kontragent-harakat),
+  body:not([data-rol="admin"]) .harakat-ochirish,
+  body:not([data-rol="admin"]) #btn-kontragent-ochirish { display: none !important; }
   body[data-rol="kuzatuvchi"][data-active="ombor"] .page table input { pointer-events: none; opacity: .7; }
 </style>
 </head>

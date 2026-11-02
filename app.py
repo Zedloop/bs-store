@@ -68,6 +68,7 @@ ADMIN_ENDPOINTLAR = {
 MENEJER_YOZISH = {
     "add_ombor_harakat", "add_operatsiya", "delete_operatsiya", "add_operatsiya_tovar",
     "update_ombor_harakat", "delete_ombor_harakat", "add_kassa_harakat",
+    "add_kontragent", "add_kontragent_harakat",
 }
 
 
@@ -121,6 +122,10 @@ AMAL_NOMLARI = {
     "update_ombor_harakat": "Изменено количество в операции",
     "delete_ombor_harakat": "Удалён товар из операции",
     "add_kassa_harakat": "Операция по кассе",
+    "add_kontragent": "Добавлен контрагент",
+    "delete_kontragent": "Удалён контрагент",
+    "add_kontragent_harakat": "Операция с контрагентом",
+    "delete_kontragent_harakat": "Удалена операция с контрагентом",
     "taklif_yuborish": "Отправлено приглашение",
     "taklif_bekor": "Отменено приглашение",
     "update_foydalanuvchi": "Изменён пользователь",
@@ -597,6 +602,11 @@ def operatsiya_detail_sahifa(operatsiya_id):
 @app.route("/kassa")
 def kassa_sahifa():
     return render_template("kassa.html", active="kassa")
+
+
+@app.route("/kontragent/<int:kontragent_id>")
+def kontragent_sahifa(kontragent_id):
+    return render_template("kontragent.html", active="kassa", kontragent_id=kontragent_id)
 
 
 @app.route("/tannarx")
@@ -1165,6 +1175,153 @@ def add_kassa_harakat():
     )
     db.commit()
     return jsonify({"ok": True}), 201
+
+
+# ---------- kontragentlar ----------
+
+# turi -> (nomi, balansga ta'siri, kassadagi harakat turi)
+KONTRAGENT_TURLARI = {
+    "tovar_oldim": ("Взял товар в долг", 1, None),
+    "tolov": ("Оплатил", -1, "chiqim"),
+    "pul_oldim": ("Получил деньги", 1, "kirim"),
+    "spisanie": ("Списание", None, None),
+}
+
+KONTRAGENT_BALANS_SQL = (
+    "(SELECT COALESCE(SUM(summa * belgi), 0) FROM kontragent_harakatlari h WHERE h.kontragent_id = k.id)"
+)
+
+
+def _kontragent(db, kontragent_id):
+    return db.execute(
+        f"SELECT k.*, {KONTRAGENT_BALANS_SQL} AS balans FROM kontragentlar k WHERE k.id = ?",
+        (kontragent_id,),
+    ).fetchone()
+
+
+@app.route("/api/kontragentlar", methods=["GET"])
+def list_kontragentlar():
+    rows = get_db().execute(
+        f"""SELECT k.id, k.nomi, k.telefon, {KONTRAGENT_BALANS_SQL} AS balans,
+                   (SELECT MAX(sana) FROM kontragent_harakatlari h WHERE h.kontragent_id = k.id) AS oxirgi
+            FROM kontragentlar k ORDER BY k.nomi COLLATE NOCASE"""
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/kontragentlar", methods=["POST"])
+def add_kontragent():
+    data = request.get_json(force=True)
+    nomi = (data.get("nomi") or "").strip()
+    if not nomi:
+        return jsonify({"xato": "Укажите имя контрагента"}), 400
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO kontragentlar (nomi, telefon, izoh) VALUES (?, ?, ?)",
+        (nomi, (data.get("telefon") or "").strip() or None, (data.get("izoh") or "").strip() or None),
+    )
+    db.commit()
+    g.jurnal_tafsilot = nomi
+    return jsonify({"ok": True, "id": cur.lastrowid}), 201
+
+
+@app.route("/api/kontragentlar/<int:kontragent_id>", methods=["GET"])
+def get_kontragent(kontragent_id):
+    db = get_db()
+    k = _kontragent(db, kontragent_id)
+    if k is None:
+        return jsonify({"xato": "Контрагент не найден"}), 404
+    rows = db.execute(
+        "SELECT id, sana, turi, summa, belgi, izoh, kassa_id FROM kontragent_harakatlari "
+        "WHERE kontragent_id = ? ORDER BY id DESC",
+        (kontragent_id,),
+    ).fetchall()
+    return jsonify({"kontragent": dict(k), "harakatlar": [dict(r) for r in rows]})
+
+
+@app.route("/api/kontragentlar/<int:kontragent_id>", methods=["DELETE"])
+def delete_kontragent(kontragent_id):
+    db = get_db()
+    k = _kontragent(db, kontragent_id)
+    if k is None:
+        return jsonify({"xato": "Контрагент не найден"}), 404
+    if db.execute(
+        "SELECT 1 FROM kontragent_harakatlari WHERE kontragent_id = ? LIMIT 1", (kontragent_id,)
+    ).fetchone():
+        return jsonify({"xato": "Сначала удалите операции этого контрагента"}), 400
+    db.execute("DELETE FROM kontragentlar WHERE id = ?", (kontragent_id,))
+    db.commit()
+    g.jurnal_tafsilot = k["nomi"]
+    return jsonify({"ok": True})
+
+
+@app.route("/api/kontragentlar/<int:kontragent_id>/harakat", methods=["POST"])
+def add_kontragent_harakat(kontragent_id):
+    data = request.get_json(force=True)
+    turi = data.get("turi")
+    izoh = (data.get("izoh") or "").strip() or None
+    if turi not in KONTRAGENT_TURLARI:
+        return jsonify({"xato": "Неверный тип операции"}), 400
+    try:
+        summa = float(data.get("summa"))
+        if summa <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"xato": "Сумма должна быть положительным числом"}), 400
+
+    db = get_db()
+    k = _kontragent(db, kontragent_id)
+    if k is None:
+        return jsonify({"xato": "Контрагент не найден"}), 404
+
+    nomi, belgi, kassa_turi = KONTRAGENT_TURLARI[turi]
+    if turi == "spisanie":
+        # Spisanie qarzni (qaysi tomonda bo'lsa ham) nolga yaqinlashtiradi
+        balans = k["balans"]
+        if abs(balans) < 0.01:
+            return jsonify({"xato": "Долга нет — списывать нечего"}), 400
+        if summa > abs(balans) + 0.01:
+            return jsonify({"xato": f"Можно списать не больше {abs(balans):,.0f} сум".replace(",", " ")}), 400
+        belgi = -1 if balans > 0 else 1
+
+    kassa_id = None
+    if kassa_turi and data.get("kassa"):
+        kassa_izoh = f"{k['nomi']}: {nomi.lower()}" + (f" — {izoh}" if izoh else "")
+        kassa_id = db.execute(
+            "INSERT INTO kassa_harakatlari (turi, summa, izoh) VALUES (?, ?, ?)",
+            (kassa_turi, summa, kassa_izoh),
+        ).lastrowid
+    db.execute(
+        "INSERT INTO kontragent_harakatlari (kontragent_id, turi, summa, belgi, izoh, kassa_id) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (kontragent_id, turi, summa, belgi, izoh, kassa_id),
+    )
+    db.commit()
+    g.jurnal_tafsilot = (
+        f"{k['nomi']}: {nomi.lower()} {summa:,.0f} сум".replace(",", " ")
+        + (" (через кассу)" if kassa_id else "")
+    )
+    return jsonify({"ok": True}), 201
+
+
+@app.route("/api/kontragent-harakat/<int:harakat_id>", methods=["DELETE"])
+def delete_kontragent_harakat(harakat_id):
+    db = get_db()
+    h = db.execute(
+        "SELECT h.*, k.nomi AS kontragent FROM kontragent_harakatlari h "
+        "JOIN kontragentlar k ON k.id = h.kontragent_id WHERE h.id = ?",
+        (harakat_id,),
+    ).fetchone()
+    if h is None:
+        return jsonify({"xato": "Операция не найдена"}), 404
+    db.execute("DELETE FROM kontragent_harakatlari WHERE id = ?", (harakat_id,))
+    if h["kassa_id"]:
+        db.execute("DELETE FROM kassa_harakatlari WHERE id = ?", (h["kassa_id"],))
+    db.commit()
+    g.jurnal_tafsilot = (
+        f"{h['kontragent']}: {KONTRAGENT_TURLARI[h['turi']][0].lower()} {h['summa']:,.0f} сум".replace(",", " ")
+    )
+    return jsonify({"ok": True})
 
 
 # gunicorn ostida ham (faqat "python app.py" da emas) yangi ustunlar
