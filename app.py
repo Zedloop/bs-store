@@ -5,7 +5,9 @@ Keyin brauzerda: http://localhost:5000
 """
 import os
 import re
+import shutil
 import sqlite3
+import time
 import uuid
 from pathlib import Path
 from dotenv import load_dotenv
@@ -48,7 +50,7 @@ ERP_API_TOKEN = os.environ["ERP_API_TOKEN"]
 
 @app.before_request
 def himoyalash():
-    if request.endpoint in ("login", "static", "uzum_prices_api"):
+    if request.endpoint in ("login", "static", "uzum_prices_api", "uzum_costs_api"):
         return
     if not session.get("authed"):
         return redirect(url_for("login"))
@@ -98,6 +100,37 @@ def uzum_prices_api():
             "ikpu": (row["ikpu"] or "").strip() or None,
         }
     return jsonify(prices)
+
+
+@app.route("/api/uzum-costs", methods=["POST"])
+def uzum_costs_api():
+    """promo-agent haftalik tekshiruvi Uzum'dagi haqiqiy komissiya va
+    logistikani shu orqali yozadi: {uzum_sku: {"komissiya_foiz": .., "logistika": ..}}.
+    O'zgartirishdan oldin baza nusxalanadi."""
+    if request.args.get("token") != ERP_API_TOKEN:
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json(force=True) or {}
+
+    db = get_db()
+    yangilandi = 0
+    rows = db.execute(
+        "SELECT id, uzum_sku FROM mahsulotlar WHERE uzum_sku IS NOT NULL AND TRIM(uzum_sku) != ''"
+    ).fetchall()
+    updates = []
+    for row in rows:
+        qiymat = data.get(row["uzum_sku"].split()[0])
+        if not qiymat:
+            continue
+        for ustun in ("komissiya_foiz", "logistika"):
+            if qiymat.get(ustun) is not None:
+                updates.append((ustun, float(qiymat[ustun]), row["id"]))
+    if updates:
+        shutil.copy(DB_PATH, BASE_DIR / f"erp_backup_{time.strftime('%Y%m%d_%H%M%S')}.db")
+        for ustun, val, pid in updates:
+            db.execute(f"UPDATE mahsulotlar SET {ustun} = ? WHERE id = ?", (val, pid))
+            yangilandi += 1
+        db.commit()
+    return jsonify({"ok": True, "yangilandi": yangilandi})
 
 
 def get_db():
