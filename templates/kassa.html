@@ -31,7 +31,7 @@
 {% block script %}
 <script>
 function kontragentBalans(b) {
-  const s = Math.abs(b).toLocaleString("ru-RU") + " сум";
+  const s = "$" + Math.abs(b).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
   if (b > 0.5) return `<span class="qoldiq-kam">Я должен ${s}</span>`;
   if (b < -0.5) return `<span style="color:var(--success);font-weight:650">Мне должны ${s}</span>`;
   return `<span style="color:var(--text-muted)">Расчёт закрыт</span>`;

@@ -41,8 +41,8 @@
           </select>
         </div>
         <div class="field">
-          <label for="h-summa">Сумма, сум</label>
-          <input type="number" id="h-summa" placeholder="0" min="1" step="0.01" required>
+          <label for="h-summa">Сумма, $</label>
+          <input type="number" id="h-summa" placeholder="0" min="0.01" step="0.01" required>
         </div>
         <div class="field field-grow">
           <label for="h-izoh">Комментарий</label>
@@ -80,7 +80,7 @@ let balans = 0;
 let harakatlar = [];
 const TAHRIR_MUMKIN = document.body.dataset.rol === "admin";
 
-function som(v) { return Math.abs(v).toLocaleString("ru-RU") + " сум"; }
+function som(v) { return "$" + Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 2 }); }
 
 function holat(b) {
   if (b > 0.5) return { label: "Я должен ему", cls: "manfiy" };
@@ -125,7 +125,7 @@ async function refresh() {
     const qator = `<tr id="harakat-${r.id}" class="${TAHRIR_MUMKIN ? "clickable-row" : ""}" ${TAHRIR_MUMKIN ? `onclick="tahrirlash(event, ${r.id})" title="Нажмите, чтобы изменить"` : ""}>
       <td>${r.sana.slice(0,16)}</td>
       <td><span class="badge ${t.badge}">${t.nomi}</span>${r.kassa_id ? ' <span class="hint" style="display:inline;margin:0">· касса</span>' : ""}</td>
-      <td>${r.belgi > 0 ? "+" : "−"}${r.summa.toLocaleString("ru-RU")}</td>
+      <td>${r.belgi > 0 ? "+" : "−"}${som(r.summa)}</td>
       <td>${Math.abs(keyin) < 0.5 ? "0" : (keyin > 0 ? "Я должен " : "Мне должны ") + som(keyin)}</td>
       <td>${escapeHtml(r.izoh || "")}</td>
       <td><button type="button" class="icon-btn danger harakat-ochirish" title="Удалить" onclick="harakatOchir(${r.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></td>
@@ -150,7 +150,7 @@ function tahrirlash(e, id) {
   tr.innerHTML = `
     <td>${r.sana.slice(0,16)}</td>
     <td><select id="t-turi-${id}" ${r.turi === "spisanie" ? "disabled" : ""}>${turlar}</select></td>
-    <td><input type="number" id="t-summa-${id}" value="${r.summa}" min="1" step="0.01" style="width:120px"></td>
+    <td><input type="number" id="t-summa-${id}" value="${r.summa}" min="0.01" step="0.01" style="width:120px"></td>
     <td></td>
     <td><input type="text" id="t-izoh-${id}" value="${escapeHtml(r.izoh || "")}" style="width:100%"></td>
     <td style="white-space:nowrap">

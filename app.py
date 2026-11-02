@@ -1188,6 +1188,11 @@ KONTRAGENT_TURLARI = {
     "spisanie": ("Списание", None, None),
 }
 
+def _usd(v):
+    """Kontragent hisob-kitoblari faqat dollarda: 1234.5 -> '$1 234.5'"""
+    return "$" + f"{v:,.2f}".rstrip("0").rstrip(".").replace(",", " ")
+
+
 KONTRAGENT_BALANS_SQL = (
     "(SELECT COALESCE(SUM(summa * belgi), 0) FROM kontragent_harakatlari h WHERE h.kontragent_id = k.id)"
 )
@@ -1282,7 +1287,7 @@ def add_kontragent_harakat(kontragent_id):
         if abs(balans) < 0.01:
             return jsonify({"xato": "Долга нет — списывать нечего"}), 400
         if summa > abs(balans) + 0.01:
-            return jsonify({"xato": f"Можно списать не больше {abs(balans):,.0f} сум".replace(",", " ")}), 400
+            return jsonify({"xato": f"Можно списать не больше {_usd(abs(balans))}"}), 400
         belgi = -1 if balans > 0 else 1
 
     kassa_id = None
@@ -1299,7 +1304,7 @@ def add_kontragent_harakat(kontragent_id):
     )
     db.commit()
     g.jurnal_tafsilot = (
-        f"{k['nomi']}: {nomi.lower()} {summa:,.0f} сум".replace(",", " ")
+        f"{k['nomi']}: {nomi.lower()} {_usd(summa)}"
         + (" (через кассу)" if kassa_id else "")
     )
     return jsonify({"ok": True}), 201
@@ -1320,7 +1325,7 @@ def delete_kontragent_harakat(harakat_id):
         db.execute("DELETE FROM kassa_harakatlari WHERE id = ?", (h["kassa_id"],))
     db.commit()
     g.jurnal_tafsilot = (
-        f"{h['kontragent']}: {KONTRAGENT_TURLARI[h['turi']][0].lower()} {h['summa']:,.0f} сум".replace(",", " ")
+        f"{h['kontragent']}: {KONTRAGENT_TURLARI[h['turi']][0].lower()} {_usd(h['summa'])}"
     )
     return jsonify({"ok": True})
 
@@ -1364,7 +1369,7 @@ def update_kontragent_harakat(harakat_id):
     if turi != h["turi"]:
         ozgarish.append(f"{KONTRAGENT_TURLARI[h['turi']][0]} → {KONTRAGENT_TURLARI[turi][0]}")
     if abs(summa - h["summa"]) > 0.001:
-        ozgarish.append(f"сумма {h['summa']:,.0f} → {summa:,.0f}".replace(",", " "))
+        ozgarish.append(f"сумма {_usd(h['summa'])} → {_usd(summa)}")
     if izoh != h["izoh"]:
         ozgarish.append(f"комментарий: {izoh or '—'}")
     g.jurnal_tafsilot = f"{h['kontragent']}: " + "; ".join(ozgarish) if ozgarish else ""
