@@ -66,7 +66,7 @@ OCHIQ_ENDPOINTLAR = ("login", "static", "uzum_prices_api", "uzum_costs_api", "ta
 ADMIN_ENDPOINTLAR = {
     "add_mahsulot", "update_mahsulot", "delete_mahsulot", "update_narxlar", "upload_mahsulot_rasm",
     "foydalanuvchilar_sahifa", "list_foydalanuvchilar", "taklif_yuborish", "taklif_bekor",
-    "update_foydalanuvchi", "jurnal_api",
+    "update_foydalanuvchi", "jurnal_api", "uzum_sozlamalari_sahifa",
 }
 # Menejer o'zgartira oladigan amallar: ombor va kassa
 MENEJER_YOZISH = {
