@@ -1,6 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Себестоимость{% endblock %}
 {% block content %}
+  <style>
+    .calc-scroll { overflow: auto; max-height: 72vh; border: 1px solid var(--border-soft); border-radius: 12px; }
+    #mahsulotlar-table { border-collapse: separate; border-spacing: 0; }
+    #mahsulotlar-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); white-space: nowrap; }
+    #mahsulotlar-table thead tr.grp-row th { height: 30px; }
+    #mahsulotlar-table thead tr.col-row th { top: 30px; font-size: 12px; }
+    #mahsulotlar-table th.grp { text-align: center; font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+      color: var(--text-muted); border-bottom: 2px solid var(--border); }
+    #mahsulotlar-table th.grp.g-zakup { border-bottom-color: #8fa0ff; }
+    #mahsulotlar-table th.grp.g-sotuv { border-bottom-color: var(--accent); }
+    #mahsulotlar-table th.grp.g-rashod { border-bottom-color: var(--warn); }
+    #mahsulotlar-table th.grp.g-itog { border-bottom-color: var(--accent); }
+    #mahsulotlar-table .gs { border-left: 1px solid var(--border); }
+    #mahsulotlar-table td.num, #mahsulotlar-table th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    #mahsulotlar-table th, #mahsulotlar-table td { padding: 6px 7px; }
+    #mahsulotlar-table .mahsulot-cell { min-width: 190px; }
+    #mahsulotlar-table input.calc-in::-webkit-outer-spin-button,
+    #mahsulotlar-table input.calc-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    #mahsulotlar-table input.calc-in { -moz-appearance: textfield; width: 88px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+    #mahsulotlar-table input.calc-in.pct { width: 58px; }
+    #mahsulotlar-table input.calc-in.sm { width: 70px; }
+    #mahsulotlar-table input.calc-in:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .calc-out { color: var(--text-muted); }
+    .rashod-cell { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+    .foyda-cell { font-weight: 600; }
+    .foyda-cell.minus { color: var(--danger); }
+    .marja { display: inline-block; min-width: 58px; text-align: center; padding: 3px 9px; border-radius: 999px;
+      font-weight: 600; font-variant-numeric: tabular-nums; }
+    .marja.yaxshi { background: var(--accent-soft); color: var(--accent); }
+    .marja.orta { background: var(--warn-soft); color: var(--warn); }
+    .marja.yomon { background: var(--danger-soft); color: var(--danger); }
+    .calc-legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 13px; color: var(--text-muted); margin: 6px 0 10px; }
+    .calc-legend .marja { min-width: 0; font-size: 12px; }
+  </style>
   <div class="grid">
 
     <div class="card full">
@@ -37,7 +72,11 @@
         </div>
       </div>
       <div class="hint" id="rejim-hint">Себестоимость и цена продажи защищены от случайного изменения — откройте «Полный расчёт», чтобы их поменять.</div>
-      <div style="overflow-x:auto;">
+      <div class="hint" id="toliq-hint" style="display:none;">Поля в рамке можно менять — всё остальное считается само и сохраняется автоматически. Наведите на «Все расходы», чтобы увидеть, из чего они состоят.</div>
+      <div class="calc-legend">Маржа (прибыль от цены продажи):
+        <span class="marja yaxshi">20%+ хорошо</span><span class="marja orta">10–20% средне</span><span class="marja yomon">ниже 10% мало</span>
+      </div>
+      <div class="calc-scroll">
         <table id="mahsulotlar-table">
           <thead id="mahsulotlar-thead"></thead>
           <tbody id="mahsulotlar-jadval"></tbody>
@@ -54,8 +93,27 @@
 const STANDART_KOMISSIYA_FOIZ = 25;
 const SOLIQ_FOIZ = 0.011;
 
+function formatNum(n) {
+  return Math.round(Number(n) || 0).toLocaleString("ru-RU");
+}
+
 function formatSum(n) {
-  return Number(n).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " сум";
+  return formatNum(n) + " сум";
+}
+
+function marjaBadge(foiz) {
+  const klass = foiz >= 20 ? "yaxshi" : foiz >= 10 ? "orta" : "yomon";
+  return `<span class="marja ${klass}">${foiz.toFixed(1)}%</span>`;
+}
+
+function rashodTafsilot(c, sotish, logistika, boshqa, komissiyaFoiz, boostFoiz) {
+  return [
+    `Комиссия ${komissiyaFoiz}%: ${formatSum(c.komissiya)}`,
+    `Буст заказов ${boostFoiz}%: ${formatSum(c.boost)}`,
+    `Налог ${(SOLIQ_FOIZ * 100).toFixed(1)}%: ${formatSum(c.soliq)}`,
+    `Логистика: ${formatSum(logistika)}`,
+    `Прочие: ${formatSum(boshqa)}`,
+  ].join("\n");
 }
 
 function komissiyaFoizi(m) {
@@ -117,18 +175,18 @@ function renderProstoyRow(m) {
   return `
     <tr data-id="${m.id}">
       <td>${renderMahsulotNomiCell(m)}</td>
-      <td>${m.qoldiq}</td>
-      <td>${formatSum(m.tannarx)}</td>
-      <td>
+      <td class="num">${m.qoldiq}</td>
+      <td class="num">${formatNum(m.tannarx)}</td>
+      <td class="num">
         <div class="sotish-cell">
           <button type="button" class="copy-btn" data-copy="${m.sotish_narxi}" title="Копировать цену продажи" aria-label="Копировать цену продажи">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
-          <span>${formatSum(m.sotish_narxi)}</span>
+          <span>${formatNum(m.sotish_narxi)}</span>
         </div>
       </td>
-      <td class="${c.foyda < 0 ? 'qoldiq-kam' : ''}">${formatSum(c.foyda)}</td>
-      <td class="${c.foyda < 0 ? 'qoldiq-kam' : ''}">${c.foydaFoiz.toFixed(1)}%</td>
+      <td class="num foyda-cell ${c.foyda < 0 ? 'minus' : ''}">${formatNum(c.foyda)}</td>
+      <td class="num">${marjaBadge(c.foydaFoiz)}</td>
     </tr>
   `;
 }
@@ -137,22 +195,18 @@ function renderToliqRow(m) {
   return `
     <tr data-id="${m.id}">
       <td>${renderMahsulotNomiCell(m)}</td>
-      <td>${m.qoldiq}</td>
-      <td><input type="number" class="f-narx-usd" min="0" step="0.01" value="${m.narx_usd}"></td>
-      <td><input type="number" class="f-kurs" min="0" step="1" value="${m.kurs}"></td>
-      <td class="f-tannarx-display"></td>
-      <td><input type="number" class="f-sotish" min="0" step="0.01" value="${m.sotish_narxi}"></td>
-      <td><input type="number" class="f-logistika" min="0" step="0.01" value="${m.logistika}"></td>
-      <td><input type="number" class="f-boshqa" min="0" step="0.01" value="${m.boshqa_harajat}"></td>
-      <td><input type="number" class="f-komissiya-foiz" min="0" max="100" step="0.1" value="${komissiyaFoizi(m)}" style="width:70px;"></td>
-      <td class="f-komissiya"></td>
-      <td><input type="number" class="f-boost-foiz" min="0" max="100" step="0.1" value="${m.boost_foiz || 0}" style="width:70px;"></td>
-      <td class="f-boost"></td>
-      <td class="f-soliq"></td>
-      <td class="f-jami"></td>
-      <td class="f-tushum"></td>
-      <td class="f-foyda"></td>
-      <td class="f-foyda-foiz"></td>
+      <td class="num">${m.qoldiq}</td>
+      <td class="num gs"><input type="number" class="calc-in sm f-narx-usd" min="0" step="0.01" value="${m.narx_usd}"></td>
+      <td class="num"><input type="number" class="calc-in f-kurs" min="0" step="1" value="${m.kurs}"></td>
+      <td class="num calc-out f-tannarx-display"></td>
+      <td class="num gs"><input type="number" class="calc-in f-sotish" min="0" step="1" value="${m.sotish_narxi}"></td>
+      <td class="num gs"><input type="number" class="calc-in sm f-logistika" min="0" step="1" value="${m.logistika}"></td>
+      <td class="num"><input type="number" class="calc-in sm f-boshqa" min="0" step="1" value="${m.boshqa_harajat}"></td>
+      <td class="num"><input type="number" class="calc-in pct f-komissiya-foiz" min="0" max="100" step="0.1" value="${komissiyaFoizi(m)}"></td>
+      <td class="num"><input type="number" class="calc-in pct f-boost-foiz" min="0" max="100" step="0.1" value="${m.boost_foiz || 0}"></td>
+      <td class="num calc-out"><span class="rashod-cell f-jami"></span></td>
+      <td class="num gs foyda-cell f-foyda"></td>
+      <td class="num f-foyda-foiz"></td>
       <td><span class="save-status"></span></td>
     </tr>
   `;
@@ -168,16 +222,14 @@ function qaytaHisoblaQator(tr) {
   const komissiyaFoiz = Number(tr.querySelector(".f-komissiya-foiz").value) || 0;
   const boostFoiz = Number(tr.querySelector(".f-boost-foiz").value) || 0;
   const c = hisoblaFullCalc(tannarx, sotish, logistika, boshqa, komissiyaFoiz, boostFoiz);
-  tr.querySelector(".f-tannarx-display").textContent = formatSum(tannarx);
-  tr.querySelector(".f-komissiya").textContent = formatSum(c.komissiya);
-  tr.querySelector(".f-boost").textContent = formatSum(c.boost);
-  tr.querySelector(".f-soliq").textContent = formatSum(c.soliq);
-  tr.querySelector(".f-jami").textContent = formatSum(c.jami);
-  tr.querySelector(".f-tushum").textContent = formatSum(c.tushum);
+  tr.querySelector(".f-tannarx-display").textContent = formatNum(tannarx);
+  const jami = tr.querySelector(".f-jami");
+  jami.textContent = formatNum(c.jami);
+  jami.title = rashodTafsilot(c, sotish, logistika, boshqa, komissiyaFoiz, boostFoiz);
   const foydaCell = tr.querySelector(".f-foyda");
-  foydaCell.textContent = formatSum(c.foyda);
-  foydaCell.className = "f-foyda " + (c.foyda < 0 ? "qoldiq-kam" : "");
-  tr.querySelector(".f-foyda-foiz").textContent = c.foydaFoiz.toFixed(1) + "%";
+  foydaCell.textContent = formatNum(c.foyda);
+  foydaCell.classList.toggle("minus", c.foyda < 0);
+  tr.querySelector(".f-foyda-foiz").innerHTML = marjaBadge(c.foydaFoiz);
 }
 
 function joriyRoyxat() {
@@ -193,22 +245,29 @@ function renderJadval() {
   const boshEmpty = soz ? "Ничего не найдено" : "Товаров пока нет";
 
   if (!toliqKorinish) {
-    thead.innerHTML = "<tr><th>Товар</th><th>Остаток</th><th>Себестоимость</th><th>Цена продажи</th><th>Прибыль</th><th>Прибыль %</th></tr>";
+    thead.innerHTML = "<tr><th>Товар</th><th class=\"num\">Остаток</th><th class=\"num\">Себестоимость, сум</th><th class=\"num\">Цена продажи, сум</th><th class=\"num\">Прибыль с 1 шт, сум</th><th class=\"num\">Маржа</th></tr>";
     tbody.innerHTML = royxat.map(renderProstoyRow).join("")
       || `<tr><td colspan=6 class='empty-row'>${boshEmpty}</td></tr>`;
     return;
   }
 
   thead.innerHTML = `
-    <tr>
-      <th>Товар</th><th>Остаток</th><th>Цена, $</th><th>Курс</th><th>Себестоимость</th><th>Цена продажи</th>
-      <th>Логистика</th><th>Прочие расходы</th>
-      <th>Комиссия, %</th><th>Комиссия</th><th>Буст заказов, %</th><th>Буст заказов</th><th>Налог (${(SOLIQ_FOIZ*100).toFixed(1)}%)</th>
-      <th>Итого расходов</th><th>Выручка без расходов</th>
-      <th>Прибыль/1 шт</th><th>Прибыль %</th><th></th>
+    <tr class="grp-row">
+      <th rowspan="2">Товар</th><th rowspan="2" class="num">Остаток</th>
+      <th colspan="3" class="grp g-zakup gs">Закупка</th>
+      <th colspan="1" class="grp g-sotuv gs">Продажа</th>
+      <th colspan="5" class="grp g-rashod gs">Расходы на 1 шт</th>
+      <th colspan="2" class="grp g-itog gs">Итог</th>
+      <th rowspan="2"></th>
+    </tr>
+    <tr class="col-row">
+      <th class="num gs">Цена, $</th><th class="num">Курс</th><th class="num">Себест., сум</th>
+      <th class="num gs">Цена, сум</th>
+      <th class="num gs">Логист., сум</th><th class="num">Прочие</th><th class="num">Комис. %</th><th class="num">Буст %</th><th class="num">Все расходы</th>
+      <th class="num gs">Прибыль, сум</th><th class="num">Маржа</th>
     </tr>`;
   tbody.innerHTML = royxat.map(renderToliqRow).join("")
-    || `<tr><td colspan=18 class='empty-row'>${boshEmpty}</td></tr>`;
+    || `<tr><td colspan=14 class='empty-row'>${boshEmpty}</td></tr>`;
 
   tbody.querySelectorAll("tr[data-id]").forEach(tr => {
     const id = tr.dataset.id;
@@ -255,6 +314,7 @@ document.getElementById("btn-toliq-korinish").addEventListener("click", () => {
   const btn = document.getElementById("btn-toliq-korinish");
   btn.textContent = toliqKorinish ? "Свернуть" : "Полный расчёт";
   document.getElementById("rejim-hint").style.display = toliqKorinish ? "none" : "block";
+  document.getElementById("toliq-hint").style.display = toliqKorinish ? "block" : "none";
   document.getElementById("page-container").classList.toggle("page-wide", toliqKorinish);
   renderJadval();
 });
