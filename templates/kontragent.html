@@ -3,7 +3,7 @@
 {% block content %}
   <a class="back-link" href="/kassa">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-    Назад к кассе
+    Назад к контрагентам
   </a>
 
   <div class="grid">
@@ -50,10 +50,6 @@
         </div>
         <button type="submit">Сохранить</button>
       </form>
-      <label id="kassa-wrap" style="display:flex; align-items:center; gap:8px; font-size:13px; margin:-6px 0 10px; cursor:pointer;">
-        <input type="checkbox" id="h-kassa" checked style="width:auto;">
-        <span id="kassa-matn">Провести через кассу</span>
-      </label>
       <div class="hint" id="h-hint" style="display:block;"></div>
       <div class="xato" id="xato-harakat"></div>
     </div>
@@ -76,8 +72,8 @@
 const KONTRAGENT_ID = {{ kontragent_id }};
 const TURLAR = {
   tovar_oldim: { nomi: "Взял товар в долг", badge: "badge-chiqim", hint: "Мой долг перед ним увеличится." },
-  tolov:       { nomi: "Оплатил",           badge: "badge-kirim",  hint: "Мой долг уменьшится. Если заплатил больше долга — он будет должен мне.", kassa: "Списать сумму из кассы (расход)" },
-  pul_oldim:   { nomi: "Получил деньги",    badge: "badge-samovykup", hint: "Например, вернул переплату. Его долг мне уменьшится (или мой долг вырастет).", kassa: "Добавить сумму в кассу (приход)" },
+  tolov:       { nomi: "Оплатил",           badge: "badge-kirim",  hint: "Мой долг уменьшится. Если заплатил больше долга — он будет должен мне." },
+  pul_oldim:   { nomi: "Получил деньги",    badge: "badge-samovykup", hint: "Например, вернул переплату. Его долг мне уменьшится (или мой долг вырастет)." },
   spisanie:    { nomi: "Списание",          badge: "badge-spisanie", hint: "" },
 };
 let balans = 0;
@@ -93,8 +89,6 @@ function holat(b) {
 function turiOzgardi() {
   const t = TURLAR[document.getElementById("h-turi").value];
   const turi = document.getElementById("h-turi").value;
-  document.getElementById("kassa-wrap").style.display = t.kassa ? "flex" : "none";
-  if (t.kassa) document.getElementById("kassa-matn").textContent = t.kassa;
   let hint = t.hint;
   if (turi === "spisanie") {
     if (balans > 0.5) hint = `Списать мой долг (без оплаты). Максимум: ${som(balans)}.`;
@@ -155,7 +149,6 @@ document.getElementById("form-kontragent-harakat").addEventListener("submit", as
       turi: document.getElementById("h-turi").value,
       summa: document.getElementById("h-summa").value,
       izoh: document.getElementById("h-izoh").value.trim(),
-      kassa: document.getElementById("h-kassa").checked,
     });
     document.getElementById("h-summa").value = "";
     document.getElementById("h-izoh").value = "";
