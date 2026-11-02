@@ -1,6 +1,48 @@
 {% extends "base.html" %}
 {% block title %}Расчёты{% endblock %}
 {% block content %}
+<style>
+  .k-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+  .k-stat { border: 1px solid var(--border-soft); border-radius: 14px; padding: 16px 18px; background: var(--bg); }
+  .k-stat.qarz { background: linear-gradient(135deg, var(--danger-soft), transparent); }
+  .k-stat.haq { background: linear-gradient(135deg, var(--accent-soft), transparent); }
+  .k-stat-label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 4px; }
+  .k-stat-value { font-size: 26px; font-weight: 680; letter-spacing: -0.02em; }
+  .k-stat.qarz .k-stat-value { color: var(--danger); }
+  .k-stat.haq .k-stat-value { color: var(--success); }
+
+  .k-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .k-toolbar input { flex: 1; max-width: 340px; }
+
+  .k-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .k-card {
+    display: flex; flex-direction: column; gap: 14px;
+    padding: 18px; border-radius: 14px; border: 1px solid var(--border);
+    background: var(--surface); text-decoration: none; color: inherit;
+    border-left: 4px solid var(--border);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  .k-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+  .k-card.qarz { border-left-color: var(--danger); }
+  .k-card.haq { border-left-color: var(--success); }
+  .k-head { display: flex; align-items: center; gap: 12px; }
+  .k-avatar {
+    width: 44px; height: 44px; border-radius: 12px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 18px; color: #fff;
+  }
+  .k-nomi { font-size: 16px; font-weight: 650; line-height: 1.2; }
+  .k-tel { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+  .k-balans-label { font-size: 12px; color: var(--text-muted); }
+  .k-balans { font-size: 24px; font-weight: 680; letter-spacing: -0.02em; }
+  .k-card.qarz .k-balans { color: var(--danger); }
+  .k-card.haq .k-balans { color: var(--success); }
+  .k-card.yopiq .k-balans { color: var(--text-muted); }
+  .k-foot { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-muted); border-top: 1px solid var(--border-soft); padding-top: 10px; }
+  .k-empty { text-align: center; color: var(--text-muted); padding: 40px 10px; }
+  @media (max-width: 700px) { .k-stats { grid-template-columns: 1fr; } }
+</style>
+
   <div class="grid">
 
     <div class="card full">
@@ -26,29 +68,80 @@
         <button type="button" class="btn-secondary" id="btn-kontragent-bekor">Отмена</button>
       </form>
       <div class="xato" id="xato-kontragent"></div>
-      <table>
-        <thead><tr><th>Контрагент</th><th>Телефон</th><th>Баланс</th><th>Последняя операция</th></tr></thead>
-        <tbody id="kontragentlar-jadval"></tbody>
-      </table>
+
+      <div class="k-stats">
+        <div class="k-stat qarz"><div class="k-stat-label">Я должен всего</div><div class="k-stat-value" id="jami-qarz">—</div></div>
+        <div class="k-stat haq"><div class="k-stat-label">Мне должны всего</div><div class="k-stat-value" id="jami-haq">—</div></div>
+        <div class="k-stat"><div class="k-stat-label">Контрагентов</div><div class="k-stat-value" id="jami-soni">—</div></div>
+      </div>
+
+      <div class="k-toolbar">
+        <input type="search" id="k-qidiruv" placeholder="Поиск по имени или телефону">
+      </div>
+      <div class="k-grid" id="kontragentlar-grid"></div>
     </div>
 
   </div>
 {% endblock %}
 {% block script %}
 <script>
-function kontragentBalans(b) {
-  const s = "$" + Math.abs(b).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
-  if (b > 0.5) return `<span class="qoldiq-kam">Я должен ${s}</span>`;
-  if (b < -0.5) return `<span style="color:var(--success);font-weight:650">Мне должны ${s}</span>`;
-  return `<span style="color:var(--text-muted)">Расчёт закрыт</span>`;
+const RANGLAR = ["#4f8a6e", "#5b6ee1", "#c2703d", "#9b59b6", "#2a9d8f", "#d1495b", "#3d7cc2", "#b08a2e"];
+let kontragentlar = [];
+
+function usd(v) { return "$" + Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 2 }); }
+
+function holati(b) {
+  if (b > 0.5) return { cls: "qarz", label: "Я должен" };
+  if (b < -0.5) return { cls: "haq", label: "Мне должны" };
+  return { cls: "yopiq", label: "Расчёт закрыт" };
+}
+
+function sanaFormat(s) {
+  if (!s) return "нет операций";
+  const [d, t] = s.split(" ");
+  const [y, m, k] = d.split("-");
+  return `${k}.${m}.${y} ${t.slice(0, 5)}`;
+}
+
+function operatsiyaSoni(n) {
+  const m10 = n % 10, m100 = n % 100;
+  const soz = m10 === 1 && m100 !== 11 ? "операция" : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "операции" : "операций");
+  return `${n} ${soz}`;
+}
+
+function chiz() {
+  const q = document.getElementById("k-qidiruv").value.trim().toLowerCase();
+  const rows = kontragentlar.filter(k => !q || k.nomi.toLowerCase().includes(q) || (k.telefon || "").toLowerCase().includes(q));
+  document.getElementById("kontragentlar-grid").innerHTML = rows.map(k => {
+    const h = holati(k.balans);
+    const rang = RANGLAR[k.id % RANGLAR.length];
+    return `<a class="k-card ${h.cls}" href="/kontragent/${k.id}">
+      <div class="k-head">
+        <div class="k-avatar" style="background:${rang}">${escapeHtml(k.nomi.trim()[0] || "?").toUpperCase()}</div>
+        <div><div class="k-nomi">${escapeHtml(k.nomi)}</div>${k.telefon ? `<div class="k-tel">${escapeHtml(k.telefon)}</div>` : ""}</div>
+      </div>
+      <div>
+        <div class="k-balans-label">${h.label}</div>
+        <div class="k-balans">${h.cls === "yopiq" ? "$0" : usd(k.balans)}</div>
+      </div>
+      <div class="k-foot"><span>${operatsiyaSoni(k.soni || 0)}</span><span>${sanaFormat(k.oxirgi)}</span></div>
+    </a>`;
+  }).join("") || `<div class="k-empty" style="grid-column:1/-1">${q ? "Ничего не найдено" : "Контрагентов пока нет — нажмите «+», чтобы добавить"}</div>`;
 }
 
 async function refreshKontragentlar() {
-  const rows = await apiGet("/api/kontragentlar");
-  document.getElementById("kontragentlar-jadval").innerHTML = rows.map(k =>
-    `<tr class="clickable-row" onclick="location.href='/kontragent/${k.id}'"><td><b>${escapeHtml(k.nomi)}</b></td><td>${escapeHtml(k.telefon || "")}</td><td>${kontragentBalans(k.balans)}</td><td>${k.oxirgi ? k.oxirgi.slice(0,16) : "—"}</td></tr>`
-  ).join("") || "<tr><td colspan=4 class='empty-row'>Контрагентов пока нет</td></tr>";
+  kontragentlar = await apiGet("/api/kontragentlar");
+  // qarzi borlar birinchi, keyin eng katta summa bo'yicha
+  kontragentlar.sort((a, b) => Math.abs(b.balans) - Math.abs(a.balans) || a.nomi.localeCompare(b.nomi));
+  const qarz = kontragentlar.filter(k => k.balans > 0.5).reduce((s, k) => s + k.balans, 0);
+  const haq = kontragentlar.filter(k => k.balans < -0.5).reduce((s, k) => s - k.balans, 0);
+  document.getElementById("jami-qarz").textContent = usd(qarz);
+  document.getElementById("jami-haq").textContent = usd(haq);
+  document.getElementById("jami-soni").textContent = kontragentlar.length;
+  chiz();
 }
+
+document.getElementById("k-qidiruv").addEventListener("input", chiz);
 
 document.getElementById("form-kontragent").addEventListener("submit", async (e) => {
   e.preventDefault();

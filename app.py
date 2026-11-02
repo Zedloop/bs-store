@@ -1218,7 +1218,8 @@ def _kontragent(db, kontragent_id):
 def list_kontragentlar():
     rows = get_db().execute(
         f"""SELECT k.id, k.nomi, k.telefon, {KONTRAGENT_BALANS_SQL} AS balans,
-                   (SELECT MAX(sana) FROM kontragent_harakatlari h WHERE h.kontragent_id = k.id) AS oxirgi
+                   (SELECT MAX(sana) FROM kontragent_harakatlari h WHERE h.kontragent_id = k.id) AS oxirgi,
+                   (SELECT COUNT(*) FROM kontragent_harakatlari h WHERE h.kontragent_id = k.id) AS soni
             FROM kontragentlar k ORDER BY k.nomi COLLATE NOCASE"""
     ).fetchall()
     return jsonify([dict(r) for r in rows])
