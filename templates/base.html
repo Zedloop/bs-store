@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
 <script>
 (function () {
   try {
@@ -103,7 +103,8 @@
   }
   * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 14px;
     background-color: var(--bg);
     background-image:
       radial-gradient(650px circle at 12% -8%, var(--glow-1), transparent 60%),
@@ -120,60 +121,78 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: var(--surface);
+    background: var(--surface-glass);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
   }
   .topbar-inner {
-    max-width: 1100px;
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 16px 24px 0;
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    gap: 22px;
   }
   .brand-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 2px;
+    flex: none;
+    text-decoration: none;
+    color: inherit;
   }
-  .brand-logo { width: 28px; height: 28px; border-radius: 7px; object-fit: cover; }
+  .brand-logo { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+  .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
   .brand-row h1 {
     font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
     font-weight: 700;
-    font-size: 19px;
+    font-size: 17px;
     margin: 0;
     letter-spacing: 0.1px;
   }
   .brand-row h1 b { color: var(--accent); font-weight: 700; }
-  .subtitle { color: var(--text-muted); margin-bottom: 14px; font-size: 13px; }
+  .subtitle { color: var(--text-muted); font-size: 11.5px; }
 
   .nav-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
+    flex: 1;
+    min-width: 0;
   }
   .nav {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
+    gap: 2px;
+    padding: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    min-width: 0;
   }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-actions { display: flex; gap: 6px; margin-left: auto; flex: none; }
   .theme-toggle {
     background: none;
     border: 1px solid var(--border);
     color: var(--text-muted);
     padding: 0;
-    width: 32px;
-    height: 32px;
-    margin-bottom: 8px;
-    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     flex: none;
-    transition: color 0.15s, background 0.15s;
+    box-shadow: none;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
   }
-  .theme-toggle svg { width: 16px; height: 16px; }
-  .theme-toggle:hover { color: var(--text); background: var(--bg); }
+  .theme-toggle svg { width: 17px; height: 17px; }
+  .theme-toggle:hover { color: var(--text); background: var(--bg); transform: none; box-shadow: none; filter: none; }
+  .theme-toggle.logout:hover { color: var(--danger); border-color: var(--danger-soft); background: var(--danger-soft); }
   .theme-toggle .icon-sun { display: none; }
   :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
   :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
@@ -185,24 +204,31 @@
     text-decoration: none;
     font-size: 13.5px;
     font-weight: 500;
-    padding: 9px 14px;
-    border-radius: 8px 8px 0 0;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s, background 0.15s;
+    padding: 8px 14px;
+    border-radius: 9px;
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s, box-shadow 0.15s;
   }
   .nav a svg { width: 16px; height: 16px; flex: none; }
-  .nav a:hover { color: var(--text); background: var(--bg); }
+  .nav a:hover { color: var(--text); background: var(--surface); }
   .nav a.active {
     color: var(--accent);
-    background: var(--accent-soft);
-    border-bottom-color: var(--accent);
-    border-radius: 8px 8px 0 0;
+    background: var(--surface);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--border-soft);
+  }
+  @media (max-width: 860px) {
+    .topbar-inner { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
+    .nav-row { order: 3; flex-basis: 100%; }
+    .nav { width: 100%; }
+    .nav-actions { margin-left: auto; }
+    .subtitle { display: none; }
   }
 
   .page {
-    max-width: 1100px;
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 24px;
+    padding: 26px 24px 48px;
     transition: max-width 0.15s;
   }
   .page.page-wide { max-width: 1700px; }
@@ -212,24 +238,26 @@
     grid-template-columns: 1fr 1fr;
     gap: 18px;
   }
-  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } .page { padding: 16px 12px 40px; } .card { padding: 16px; } }
 
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
-    padding: 20px 22px;
+    padding: 22px 24px;
   }
   .card h2 {
-    font-size: 14.5px;
-    font-weight: 600;
-    margin: 0 0 14px;
+    font-size: 15.5px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0 0 16px;
     display: flex;
     align-items: center;
     gap: 8px;
   }
-  .card h2 svg { width: 16px; height: 16px; color: var(--text-muted); }
+  .card h2 svg { width: 18px; height: 18px; color: var(--accent); padding: 6px; box-sizing: content-box;
+    background: var(--accent-soft); border-radius: 9px; }
 
   .balans-wrap {
     background: linear-gradient(135deg, var(--accent-soft), transparent);
@@ -244,9 +272,9 @@
   .balans.manfiy { color: var(--danger); }
   .balans.musbat { color: var(--success); }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--border-soft); }
-  th { color: var(--text-muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border-soft); }
+  th { color: var(--text-muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; }
   tbody tr:hover { background: var(--row-hover); }
   tbody tr:last-child td { border-bottom: none; }
   td.empty-row { text-align: center; color: var(--text-muted); padding: 22px 6px; }
@@ -257,7 +285,7 @@
   .field-grow { flex: 1; min-width: 140px; }
 
   input, select {
-    padding: 8px 10px;
+    padding: 9px 11px;
     border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 13.5px;
@@ -273,18 +301,19 @@
   input[type=text], input[type=number] { width: 100%; }
 
   button {
-    background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+    background: var(--accent);
     color: #fff;
     border: none;
     padding: 9px 16px;
-    border-radius: 9px;
+    border-radius: 10px;
     font-size: 13.5px;
-    font-weight: 550;
+    font-weight: 600;
+    font-family: inherit;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
     transition: transform 0.12s, box-shadow 0.15s, filter 0.15s;
   }
-  button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16); }
+  button:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14); }
   button:active { transform: translateY(0); filter: brightness(0.98); }
 
   .variant-list { display: flex; flex-direction: column; gap: 6px; }
@@ -412,6 +441,10 @@
     gap: 12px;
     margin-bottom: 16px;
   }
+  @media (max-width: 600px) {
+    .detail-header { flex-direction: column; align-items: stretch; }
+    .detail-header > div { flex-wrap: wrap; }
+  }
   .back-link {
     display: inline-flex;
     align-items: center;
@@ -492,11 +525,13 @@
 <body>
   <div class="topbar">
     <div class="topbar-inner">
-      <div class="brand-row">
+      <a href="/" class="brand-row">
         <img src="/static/bs-logo.jpg" alt="BS Store" class="brand-logo">
-        <h1>BS <b>Store</b></h1>
-      </div>
-      <div class="subtitle">Склад и касса — все записи вносятся вручную</div>
+        <span class="brand-text">
+          <h1>BS <b>Store</b></h1>
+          <span class="subtitle">Склад · касса · себестоимость</span>
+        </span>
+      </a>
       <div class="nav-row">
         <nav class="nav">
           <a href="/" class="{% if active == 'mahsulotlar' %}active{% endif %}">
@@ -517,14 +552,16 @@
           </a>
           <a href="/uzum-sozlamalari" class="{% if active == 'uzum' %}active{% endif %}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            Uzum sozlamalari
+            Настройки Uzum
           </a>
         </nav>
+      </div>
+      <div class="nav-actions">
         <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Переключить тему">
           <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         </button>
-        <a href="/logout" class="theme-toggle" aria-label="Chiqish" title="Chiqish">
+        <a href="/logout" class="theme-toggle logout" aria-label="Выйти" title="Выйти">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </a>
       </div>
