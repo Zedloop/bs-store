@@ -5,14 +5,18 @@ Keyin brauzerda: http://localhost:5000
 """
 import os
 import re
+import secrets
 import shutil
+import smtplib
 import sqlite3
 import time
 import uuid
+from email.message import EmailMessage
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
 from PIL import Image
+from werkzeug.security import check_password_hash, generate_password_hash
 
 # Aniq shu loyihaning o'z .env fayli, override=True bilan - aks holda bir
 # nechta loyiha bitta jarayonda birlashtirilganda (masalan PythonAnywhere'da),
@@ -48,30 +52,360 @@ ERP_PASSWORD = os.environ["ERP_PASSWORD"]
 ERP_API_TOKEN = os.environ["ERP_API_TOKEN"]
 
 
+ROLLAR = {"admin": "Администратор", "menejer": "Менеджер", "kuzatuvchi": "Наблюдатель"}
+TAKLIF_MUDDATI_SOAT = 72
+ERP_BASE_URL = os.environ.get("ERP_BASE_URL", "https://erp.bsuzum.duckdns.org").rstrip("/")
+
+# Login talab qilinmaydigan manzillar (token bilan himoyalangan API'lar va taklif sahifasi)
+OCHIQ_ENDPOINTLAR = ("login", "static", "uzum_prices_api", "uzum_costs_api", "taklif_qabul")
+# Faqat admin: katalog, narx/tannarx, Uzum sozlamalari, foydalanuvchilar
+ADMIN_ENDPOINTLAR = {
+    "add_mahsulot", "update_mahsulot", "delete_mahsulot", "update_narxlar", "upload_mahsulot_rasm",
+    "foydalanuvchilar_sahifa", "list_foydalanuvchilar", "taklif_yuborish", "taklif_bekor",
+    "update_foydalanuvchi", "jurnal_api",
+}
+# Menejer o'zgartira oladigan amallar: ombor va kassa
+MENEJER_YOZISH = {
+    "add_ombor_harakat", "add_operatsiya", "delete_operatsiya", "add_operatsiya_tovar",
+    "update_ombor_harakat", "delete_ombor_harakat", "add_kassa_harakat",
+}
+
+
+def _ruxsat_yoq():
+    if request.path.startswith("/api/"):
+        return jsonify({"xato": "Недостаточно прав для этого действия"}), 403
+    return redirect(url_for("index"))
+
+
 @app.before_request
 def himoyalash():
-    if request.endpoint in ("login", "static", "uzum_prices_api", "uzum_costs_api"):
+    if request.endpoint in OCHIQ_ENDPOINTLAR:
         return
-    if not session.get("authed"):
+    user = None
+    if session.get("user_id"):
+        user = get_db().execute(
+            "SELECT id, login, ism, email, rol FROM foydalanuvchilar WHERE id = ? AND faol = 1",
+            (session["user_id"],),
+        ).fetchone()
+    if user is None:
+        session.clear()
+        if request.path.startswith("/api/"):
+            return jsonify({"xato": "Сессия истекла — войдите снова"}), 401
         return redirect(url_for("login"))
+    g.user = dict(user)
+    if request.endpoint in ADMIN_ENDPOINTLAR and user["rol"] != "admin":
+        return _ruxsat_yoq()
+    if request.method not in ("GET", "HEAD") and user["rol"] != "admin":
+        if not (user["rol"] == "menejer" and request.endpoint in MENEJER_YOZISH):
+            return _ruxsat_yoq()
 
+
+@app.context_processor
+def joriy_foydalanuvchi():
+    user = g.get("user")
+    return {"joriy_user": user, "rol_nomi": ROLLAR.get(user["rol"]) if user else None}
+
+
+# ---------- o'zgarishlar jurnali ----------
+
+AMAL_NOMLARI = {
+    "add_mahsulot": "Добавлен товар",
+    "update_mahsulot": "Изменён товар",
+    "delete_mahsulot": "Удалён товар",
+    "update_narxlar": "Изменены цены / расходы",
+    "upload_mahsulot_rasm": "Загружено фото товара",
+    "add_ombor_harakat": "Движение товара на складе",
+    "add_operatsiya": "Добавлена складская операция",
+    "delete_operatsiya": "Удалена складская операция",
+    "add_operatsiya_tovar": "Добавлен товар в операцию",
+    "update_ombor_harakat": "Изменено количество в операции",
+    "delete_ombor_harakat": "Удалён товар из операции",
+    "add_kassa_harakat": "Операция по кассе",
+    "taklif_yuborish": "Отправлено приглашение",
+    "taklif_bekor": "Отменено приглашение",
+    "update_foydalanuvchi": "Изменён пользователь",
+}
+
+
+def jurnalga_yoz(amal, tafsilot="", user_id=None, user_login=None):
+    if user_id is None and g.get("user"):
+        user_id, user_login = g.user["id"], g.user["login"]
+    db = get_db()
+    db.execute(
+        "INSERT INTO jurnal (sana, user_id, user_login, amal, tafsilot) VALUES (datetime('now', '+5 hours'), ?, ?, ?, ?)",
+        (user_id, user_login, amal, (tafsilot or "")[:600]),
+    )
+    db.commit()
+
+
+def _raqam(v):
+    v = float(v or 0)
+    return f"{v:,.2f}".rstrip("0").rstrip(".").replace(",", " ")
+
+
+def _sorov_tafsiloti():
+    """Jurnal uchun so'rovdan qisqa, o'qiladigan izoh."""
+    data = request.get_json(silent=True) or {}
+    args = request.view_args or {}
+    qismlar = []
+    mid = args.get("mahsulot_id") or data.get("mahsulot_id")
+    if mid:
+        row = get_db().execute("SELECT nomi FROM mahsulotlar WHERE id = ?", (mid,)).fetchone()
+        qismlar.append(row["nomi"] if row else f"товар #{mid}")
+    for k in ("operatsiya_id", "harakat_id"):
+        if args.get(k):
+            qismlar.append(f"#{args[k]}")
+    nomlar = {"nomi": "название", "turi": "тип", "miqdor": "кол-во", "summa": "сумма", "izoh": "комментарий"}
+    for k, v in data.items():
+        if k in nomlar and v not in (None, ""):
+            qismlar.append(f"{nomlar[k]}: {v}")
+    if isinstance(data.get("tovarlar"), list):
+        qismlar.append(f"товаров: {len(data['tovarlar'])}")
+    return "; ".join(map(str, qismlar))
+
+
+@app.after_request
+def jurnal_yozish(response):
+    try:
+        if request.endpoint == "uzum_costs_api" and response.status_code == 200:
+            n = (response.get_json(silent=True) or {}).get("yangilandi")
+            if n:
+                jurnalga_yoz("Автосинхронизация с Uzum (комиссия / буст / логистика)",
+                             f"обновлено полей: {n}", user_id=0, user_login="promo-agent")
+        elif request.endpoint in AMAL_NOMLARI and response.status_code < 400 and g.get("user"):
+            tafsilot = g.get("jurnal_tafsilot")
+            if tafsilot is None:
+                tafsilot = _sorov_tafsiloti()
+            if tafsilot != "":  # "" - hech narsa o'zgarmagan (masalan narx avto-saqlashda)
+                jurnalga_yoz(AMAL_NOMLARI[request.endpoint], tafsilot)
+    except Exception:
+        app.logger.exception("jurnalga yozib bo'lmadi")
+    return response
+
+
+# ---------- kirish / chiqish ----------
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     xato = None
+    login_qiymat = ""
     if request.method == "POST":
-        if request.form.get("parol") == ERP_PASSWORD:
-            session["authed"] = True
+        login_qiymat = (request.form.get("login") or "").strip().lower()
+        user = get_db().execute(
+            "SELECT id, login, parol_hash, faol FROM foydalanuvchilar WHERE login = ? OR email = ?",
+            (login_qiymat, login_qiymat),
+        ).fetchone()
+        if user and user["faol"] and check_password_hash(user["parol_hash"], request.form.get("parol") or ""):
+            session.clear()
+            session["user_id"] = user["id"]
             session.permanent = True
+            jurnalga_yoz("Вход в систему", user_id=user["id"], user_login=user["login"])
             return redirect(url_for("index"))
-        xato = "Неверный пароль"
-    return render_template("login.html", xato=xato)
+        xato = "Неверный логин или пароль"
+    return render_template("login.html", xato=xato, login_qiymat=login_qiymat)
 
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+# ---------- foydalanuvchilar va takliflar (faqat admin) ----------
+
+LOGIN_RE = re.compile(r"[a-z0-9_.-]{3,32}")
+EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+
+def taklif_xati_yubor(email, rol, havola):
+    """Taklif havolasini emailga yuboradi. SMTP sozlanmagan bo'lsa False -
+    unda admin havolani sahifadan nusxalab o'zi yuboradi."""
+    host = os.environ.get("SMTP_HOST")
+    user = os.environ.get("SMTP_USER")
+    parol = os.environ.get("SMTP_PASSWORD")
+    if not (host and user and parol):
+        return False
+    msg = EmailMessage()
+    msg["Subject"] = "Приглашение в BS Store ERP / BS Store ERP'ga taklif"
+    msg["From"] = os.environ.get("SMTP_FROM") or f"BS Store ERP <{user}>"
+    msg["To"] = email
+    rol_nomi = ROLLAR.get(rol, rol)
+    msg.set_content(
+        f"Assalomu alaykum!\n\nSizni BS Store ERP tizimiga taklif qilishdi (rol: {rol_nomi}).\n"
+        f"Quyidagi havolani ochib, o'zingizga login va parol o'ylab toping:\n{havola}\n\n"
+        f"Havola {TAKLIF_MUDDATI_SOAT} soat amal qiladi.\n\n---\n\n"
+        f"Здравствуйте! Вас пригласили в BS Store ERP (роль: {rol_nomi}).\n"
+        f"Откройте ссылку и придумайте логин и пароль:\n{havola}\n\n"
+        f"Ссылка действует {TAKLIF_MUDDATI_SOAT} часа.\n"
+    )
+    msg.add_alternative(f"""<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#23231f">
+  <h2 style="margin:0 0 6px">BS <span style="color:#2f6f4f">Store</span> ERP</h2>
+  <p>Sizni tizimga taklif qilishdi. Rol: <b>{rol_nomi}</b>.<br>
+     Вас пригласили в систему. Роль: <b>{rol_nomi}</b>.</p>
+  <p style="margin:24px 0"><a href="{havola}" style="background:#2f6f4f;color:#fff;text-decoration:none;
+     padding:12px 22px;border-radius:10px;font-weight:bold;display:inline-block">Login va parol yaratish / Создать логин и пароль</a></p>
+  <p style="color:#7a7972;font-size:13px">Havola {TAKLIF_MUDDATI_SOAT} soat amal qiladi · Ссылка действует {TAKLIF_MUDDATI_SOAT} ч.</p>
+</div>""", subtype="html")
+    port = int(os.environ.get("SMTP_PORT", "465"))
+    with smtplib.SMTP_SSL(host, port, timeout=20) as smtp:
+        smtp.login(user, parol)
+        smtp.send_message(msg)
+    return True
+
+
+@app.route("/foydalanuvchilar")
+def foydalanuvchilar_sahifa():
+    return render_template("foydalanuvchilar.html", active="foydalanuvchilar")
+
+
+@app.route("/api/foydalanuvchilar", methods=["GET"])
+def list_foydalanuvchilar():
+    db = get_db()
+    users = db.execute(
+        "SELECT id, login, ism, email, rol, faol, yaratilgan FROM foydalanuvchilar ORDER BY faol DESC, rol, ism"
+    ).fetchall()
+    takliflar = db.execute(
+        """SELECT token, email, rol, yaratilgan, muddat FROM takliflar
+           WHERE ishlatilgan IS NULL AND muddat > datetime('now', '+5 hours') ORDER BY yaratilgan DESC"""
+    ).fetchall()
+    return jsonify({
+        "foydalanuvchilar": [dict(r) for r in users],
+        "takliflar": [dict(t, havola=f"{ERP_BASE_URL}/taklif/{t['token']}") for t in takliflar],
+        "rollar": ROLLAR,
+        "men": g.user["id"],
+        "email_sozlangan": bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_PASSWORD")),
+    })
+
+
+@app.route("/api/takliflar", methods=["POST"])
+def taklif_yuborish():
+    data = request.get_json(force=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    rol = data.get("rol")
+    if not EMAIL_RE.fullmatch(email):
+        return jsonify({"xato": "Укажите корректный email"}), 400
+    if rol not in ROLLAR:
+        return jsonify({"xato": "Выберите роль"}), 400
+    db = get_db()
+    if db.execute("SELECT 1 FROM foydalanuvchilar WHERE email = ?", (email,)).fetchone():
+        return jsonify({"xato": "Пользователь с таким email уже есть"}), 400
+    # Shu emailga oldingi ishlatilmagan takliflar bekor qilinadi
+    db.execute("DELETE FROM takliflar WHERE email = ? AND ishlatilgan IS NULL", (email,))
+    token = secrets.token_urlsafe(32)
+    db.execute(
+        f"""INSERT INTO takliflar (token, email, rol, yaratdi, yaratilgan, muddat)
+            VALUES (?, ?, ?, ?, datetime('now', '+5 hours'), datetime('now', '+5 hours', '+{TAKLIF_MUDDATI_SOAT} hours'))""",
+        (token, email, rol, g.user["id"]),
+    )
+    db.commit()
+    havola = f"{ERP_BASE_URL}/taklif/{token}"
+    try:
+        yuborildi = taklif_xati_yubor(email, rol, havola)
+        xato = None
+    except Exception as e:
+        yuborildi, xato = False, str(e)
+    g.jurnal_tafsilot = f"{email}, роль: {ROLLAR[rol]}" + ("" if yuborildi else " (письмо не отправлено)")
+    return jsonify({"ok": True, "havola": havola, "email_yuborildi": yuborildi, "email_xato": xato}), 201
+
+
+@app.route("/api/takliflar/<token>", methods=["DELETE"])
+def taklif_bekor(token):
+    db = get_db()
+    row = db.execute("SELECT email FROM takliflar WHERE token = ?", (token,)).fetchone()
+    db.execute("DELETE FROM takliflar WHERE token = ? AND ishlatilgan IS NULL", (token,))
+    db.commit()
+    g.jurnal_tafsilot = row["email"] if row else token[:8]
+    return jsonify({"ok": True})
+
+
+@app.route("/taklif/<token>", methods=["GET", "POST"])
+def taklif_qabul(token):
+    db = get_db()
+    taklif = db.execute(
+        """SELECT token, email, rol FROM takliflar
+           WHERE token = ? AND ishlatilgan IS NULL AND muddat > datetime('now', '+5 hours')""",
+        (token,),
+    ).fetchone()
+    if taklif is None:
+        return render_template("taklif.html", yaroqsiz=True), 404
+
+    xato = None
+    form = {"ism": "", "login": ""}
+    if request.method == "POST":
+        form = {"ism": (request.form.get("ism") or "").strip(), "login": (request.form.get("login") or "").strip().lower()}
+        parol, parol2 = request.form.get("parol") or "", request.form.get("parol2") or ""
+        if not form["ism"]:
+            xato = "Укажите ваше имя"
+        elif not LOGIN_RE.fullmatch(form["login"]):
+            xato = "Логин: 3–32 символа — латинские буквы, цифры, точка, _ или -"
+        elif len(parol) < 8:
+            xato = "Пароль — минимум 8 символов"
+        elif parol != parol2:
+            xato = "Пароли не совпадают"
+        elif db.execute("SELECT 1 FROM foydalanuvchilar WHERE login = ?", (form["login"],)).fetchone():
+            xato = "Такой логин уже занят — придумайте другой"
+        else:
+            cur = db.execute(
+                """INSERT INTO foydalanuvchilar (login, ism, email, parol_hash, rol, yaratilgan)
+                   VALUES (?, ?, ?, ?, ?, datetime('now', '+5 hours'))""",
+                (form["login"], form["ism"], taklif["email"], generate_password_hash(parol), taklif["rol"]),
+            )
+            db.execute("UPDATE takliflar SET ishlatilgan = datetime('now', '+5 hours') WHERE token = ?", (token,))
+            db.commit()
+            jurnalga_yoz("Принято приглашение — создан пользователь",
+                         f"{form['ism']} ({form['login']}, {taklif['email']}), роль: {ROLLAR[taklif['rol']]}",
+                         user_id=cur.lastrowid, user_login=form["login"])
+            session.clear()
+            session["user_id"] = cur.lastrowid
+            session.permanent = True
+            return redirect(url_for("index"))
+    return render_template("taklif.html", yaroqsiz=False, taklif=dict(taklif),
+                           rol_nomi=ROLLAR[taklif["rol"]], xato=xato, form=form)
+
+
+@app.route("/api/foydalanuvchilar/<int:user_id>", methods=["PATCH"])
+def update_foydalanuvchi(user_id):
+    data = request.get_json(force=True) or {}
+    db = get_db()
+    user = db.execute("SELECT id, login, ism, rol, faol FROM foydalanuvchilar WHERE id = ?", (user_id,)).fetchone()
+    if user is None:
+        return jsonify({"xato": "Пользователь не найден"}), 404
+    yangi_rol = data.get("rol", user["rol"])
+    yangi_faol = int(bool(data.get("faol", user["faol"])))
+    if yangi_rol not in ROLLAR:
+        return jsonify({"xato": "Неизвестная роль"}), 400
+    # Tizimda kamida bitta faol admin qolishi shart - aks holda hech kim boshqara olmaydi
+    if user["rol"] == "admin" and user["faol"] and (yangi_rol != "admin" or not yangi_faol):
+        adminlar = db.execute("SELECT COUNT(*) FROM foydalanuvchilar WHERE rol = 'admin' AND faol = 1").fetchone()[0]
+        if adminlar <= 1:
+            return jsonify({"xato": "Нельзя: это единственный активный администратор"}), 400
+    ozgarish = []
+    if yangi_rol != user["rol"]:
+        ozgarish.append(f"роль {ROLLAR[user['rol']]} → {ROLLAR[yangi_rol]}")
+    if yangi_faol != user["faol"]:
+        ozgarish.append("доступ включён" if yangi_faol else "доступ отключён")
+    parol = data.get("parol")
+    if parol:
+        if len(parol) < 8:
+            return jsonify({"xato": "Пароль — минимум 8 символов"}), 400
+        db.execute("UPDATE foydalanuvchilar SET parol_hash = ? WHERE id = ?", (generate_password_hash(parol), user_id))
+        ozgarish.append("пароль сброшен администратором")
+    db.execute("UPDATE foydalanuvchilar SET rol = ?, faol = ? WHERE id = ?", (yangi_rol, yangi_faol, user_id))
+    db.commit()
+    g.jurnal_tafsilot = f"{user['ism']} ({user['login']}): " + "; ".join(ozgarish) if ozgarish else ""
+    return jsonify({"ok": True})
+
+
+@app.route("/api/jurnal", methods=["GET"])
+def jurnal_api():
+    login_f = (request.args.get("login") or "").strip()
+    sql = "SELECT sana, user_login, amal, tafsilot FROM jurnal"
+    params = []
+    if login_f:
+        sql += " WHERE user_login = ?"
+        params.append(login_f)
+    sql += " ORDER BY id DESC LIMIT 300"
+    return jsonify({"jurnal": [dict(r) for r in get_db().execute(sql, params).fetchall()]})
 
 
 @app.route("/api/uzum-prices")
@@ -152,6 +486,13 @@ def close_db(exception=None):
 def init_db():
     with sqlite3.connect(DB_PATH) as db:
         db.executescript(SCHEMA_PATH.read_text())
+        # Birinchi ishga tushishda (foydalanuvchi yo'q) - eski umumiy parol bilan admin
+        if db.execute("SELECT COUNT(*) FROM foydalanuvchilar").fetchone()[0] == 0:
+            db.execute(
+                "INSERT INTO foydalanuvchilar (login, ism, parol_hash, rol, yaratilgan) "
+                "VALUES ('admin', 'Администратор', ?, 'admin', datetime('now', '+5 hours'))",
+                (generate_password_hash(ERP_PASSWORD),),
+            )
         mahsulot_ustunlari = [r[1] for r in db.execute("PRAGMA table_info(mahsulotlar)")]
         if "rasm" not in mahsulot_ustunlari:
             db.execute("ALTER TABLE mahsulotlar ADD COLUMN rasm TEXT")
@@ -317,10 +658,14 @@ def update_mahsulot(mahsulot_id):
     ikpu = (data.get("ikpu") or "").strip() or None
     db = get_db()
     mahsulot = db.execute(
-        "SELECT id FROM mahsulotlar WHERE id = ?", (mahsulot_id,)
+        "SELECT id, nomi, uzum_sku, ikpu FROM mahsulotlar WHERE id = ?", (mahsulot_id,)
     ).fetchone()
     if mahsulot is None:
         return jsonify({"xato": "Товар не найден"}), 404
+    ozgarish = [f"{nom}: {mahsulot[k] or '—'} → {v or '—'}"
+                for k, nom, v in (("nomi", "название", nomi), ("uzum_sku", "Uzum SKU", uzum_sku), ("ikpu", "ИКПУ", ikpu))
+                if (mahsulot[k] or None) != (v or None)]
+    g.jurnal_tafsilot = f"{mahsulot['nomi']}: " + "; ".join(ozgarish) if ozgarish else ""
     db.execute(
         "UPDATE mahsulotlar SET nomi = ?, uzum_sku = ?, ikpu = ? WHERE id = ?",
         (nomi, uzum_sku, ikpu, mahsulot_id),
@@ -333,10 +678,11 @@ def update_mahsulot(mahsulot_id):
 def delete_mahsulot(mahsulot_id):
     db = get_db()
     mahsulot = db.execute(
-        "SELECT id, rasm FROM mahsulotlar WHERE id = ?", (mahsulot_id,)
+        "SELECT id, nomi, rasm FROM mahsulotlar WHERE id = ?", (mahsulot_id,)
     ).fetchone()
     if mahsulot is None:
         return jsonify({"xato": "Товар не найден"}), 404
+    g.jurnal_tafsilot = mahsulot["nomi"]
 
     db.execute("DELETE FROM ombor_harakatlari WHERE mahsulot_id = ?", (mahsulot_id,))
     db.execute("DELETE FROM mahsulotlar WHERE id = ?", (mahsulot_id,))
@@ -371,10 +717,19 @@ def update_narxlar(mahsulot_id):
 
     db = get_db()
     mahsulot = db.execute(
-        "SELECT id FROM mahsulotlar WHERE id = ?", (mahsulot_id,)
+        """SELECT id, nomi, narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, komissiya_foiz, boost_foiz
+           FROM mahsulotlar WHERE id = ?""", (mahsulot_id,)
     ).fetchone()
     if mahsulot is None:
         return jsonify({"xato": "Товар не найден"}), 404
+    nomlar = {"narx_usd": "цена $", "kurs": "курс", "sotish_narxi": "цена продажи", "logistika": "логистика",
+              "boshqa_harajat": "прочие", "komissiya_foiz": "комиссия %", "boost_foiz": "буст %"}
+    yangi = {"narx_usd": narx_usd, "kurs": kurs, "sotish_narxi": sotish_narxi, "logistika": logistika,
+             "boshqa_harajat": boshqa_harajat, "komissiya_foiz": komissiya_foiz, "boost_foiz": boost_foiz}
+    ozgarish = [f"{nomlar[k]} {_raqam(mahsulot[k])} → {_raqam(v)}"
+                for k, v in yangi.items() if abs(float(mahsulot[k] or 0) - v) > 1e-9]
+    # Avto-saqlash har necha soniyada chaqiriladi - o'zgarish bo'lmasa jurnalga yozilmaydi
+    g.jurnal_tafsilot = f"{mahsulot['nomi']}: " + "; ".join(ozgarish) if ozgarish else ""
     db.execute(
         """UPDATE mahsulotlar
            SET tannarx = ?, narx_usd = ?, kurs = ?, sotish_narxi = ?, logistika = ?, boshqa_harajat = ?,

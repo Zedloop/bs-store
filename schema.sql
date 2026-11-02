@@ -53,3 +53,36 @@ CREATE TABLE IF NOT EXISTS kassa_harakatlari (
     summa REAL NOT NULL CHECK(summa > 0),
     izoh TEXT
 );
+
+-- Foydalanuvchilar: rol = admin | menejer | kuzatuvchi
+CREATE TABLE IF NOT EXISTS foydalanuvchilar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    login TEXT NOT NULL UNIQUE,
+    ism TEXT NOT NULL,
+    email TEXT UNIQUE,
+    parol_hash TEXT NOT NULL,
+    rol TEXT NOT NULL CHECK(rol IN ('admin', 'menejer', 'kuzatuvchi')),
+    faol INTEGER NOT NULL DEFAULT 1,
+    yaratilgan TEXT
+);
+
+-- Email orqali yuborilgan takliflar (bir martalik havola)
+CREATE TABLE IF NOT EXISTS takliflar (
+    token TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    rol TEXT NOT NULL,
+    yaratdi INTEGER,
+    yaratilgan TEXT NOT NULL,
+    muddat TEXT NOT NULL,
+    ishlatilgan TEXT
+);
+
+-- O'zgarishlar jurnali: kim, qachon, nima qildi
+CREATE TABLE IF NOT EXISTS jurnal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sana TEXT NOT NULL,
+    user_id INTEGER,
+    user_login TEXT,
+    amal TEXT NOT NULL,
+    tafsilot TEXT
+);

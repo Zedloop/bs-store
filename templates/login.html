@@ -108,7 +108,7 @@
   .brand span b { color: var(--accent); }
   p.sub { color: var(--text-muted); margin: 0 0 24px; font-size: 14px; text-align: center; }
   label { display: block; font-size: 12.5px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
-  input[type="password"] {
+  input[type="password"], input[type="text"] {
     width: 100%;
     padding: 12px 14px;
     border: 1px solid var(--border);
@@ -119,7 +119,7 @@
     font-family: inherit;
     margin-bottom: 16px;
   }
-  input[type="password"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input[type="password"]:focus, input[type="text"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   button {
     width: 100%;
     padding: 12px 14px;
@@ -154,8 +154,10 @@
     <p class="sub">Склад · касса · себестоимость</p>
     {% if xato %}<div class="xato">{{ xato }}</div>{% endif %}
     <form method="post">
+      <label for="login">Логин или email</label>
+      <input type="text" id="login" name="login" value="{{ login_qiymat or '' }}" placeholder="Например, ali" autocomplete="username" autocapitalize="none" {% if not login_qiymat %}autofocus{% endif %} required>
       <label for="parol">Пароль</label>
-      <input type="password" id="parol" name="parol" placeholder="Введите пароль" autofocus required>
+      <input type="password" id="parol" name="parol" placeholder="Введите пароль" autocomplete="current-password" {% if login_qiymat %}autofocus{% endif %} required>
       <button type="submit">Войти</button>
     </form>
   </div>
