@@ -127,7 +127,7 @@
     border-bottom: 1px solid var(--border);
   }
   .topbar-inner {
-    max-width: 1240px;
+    max-width: 1480px;
     margin: 0 auto;
     padding: 10px 24px;
     display: flex;
@@ -210,7 +210,8 @@
     transition: color 0.15s, background 0.15s, box-shadow 0.15s;
   }
   .nav a svg { width: 16px; height: 16px; flex: none; }
-  @media (max-width: 1480px) and (min-width: 861px) { .nav a svg { display: none; } .subtitle { display: none; } }
+  @media (max-width: 1760px) and (min-width: 601px) { .nav a svg { display: none; } }
+  @media (max-width: 1360px) and (min-width: 1241px) { .subtitle { display: none; } .nav a { padding: 8px 9px; } }
   .nav a:hover { color: var(--text); background: var(--surface); }
   .nav a.active {
     color: var(--accent);
@@ -218,12 +219,17 @@
     font-weight: 600;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--border-soft);
   }
-  @media (max-width: 860px) {
+  @media (max-width: 1240px) {
     .topbar-inner { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
     .nav-row { order: 3; flex-basis: 100%; }
     .nav { width: 100%; }
     .nav-actions { margin-left: auto; }
+  }
+  @media (max-width: 860px) {
     .subtitle { display: none; }
+    /* Telefonda menyu yonga suriladi - o'ng chetdagi xiralik davomi borligini bildiradi */
+    .nav { -webkit-mask-image: linear-gradient(to right, #000 82%, transparent);
+           mask-image: linear-gradient(to right, #000 82%, transparent); }
   }
 
   .page {
