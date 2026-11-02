@@ -83,7 +83,7 @@ def uzum_prices_api():
 
     db = get_db()
     rows = db.execute(
-        "SELECT uzum_sku, sotish_narxi, tannarx, logistika, boshqa_harajat, komissiya_foiz, nomi, ikpu "
+        "SELECT uzum_sku, sotish_narxi, tannarx, logistika, boshqa_harajat, komissiya_foiz, boost_foiz, nomi, ikpu "
         "FROM mahsulotlar WHERE uzum_sku IS NOT NULL AND TRIM(uzum_sku) != ''"
     ).fetchall()
 
@@ -96,6 +96,7 @@ def uzum_prices_api():
             "logistika": row["logistika"],
             "boshqa_harajat": row["boshqa_harajat"],
             "komissiya_foiz": row["komissiya_foiz"],
+            "boost_foiz": row["boost_foiz"],
             "nomi": row["nomi"],
             "ikpu": (row["ikpu"] or "").strip() or None,
         }
@@ -105,7 +106,7 @@ def uzum_prices_api():
 @app.route("/api/uzum-costs", methods=["POST"])
 def uzum_costs_api():
     """promo-agent haftalik tekshiruvi Uzum'dagi haqiqiy komissiya va
-    logistikani shu orqali yozadi: {uzum_sku: {"komissiya_foiz": .., "logistika": ..}}.
+    logistikani shu orqali yozadi: {uzum_sku: {"komissiya_foiz": .., "logistika": .., "boost_foiz": ..}}.
     O'zgartirishdan oldin baza nusxalanadi."""
     if request.args.get("token") != ERP_API_TOKEN:
         return jsonify({"error": "forbidden"}), 403
@@ -121,7 +122,7 @@ def uzum_costs_api():
         qiymat = data.get(row["uzum_sku"].split()[0])
         if not qiymat:
             continue
-        for ustun in ("komissiya_foiz", "logistika"):
+        for ustun in ("komissiya_foiz", "logistika", "boost_foiz"):
             if qiymat.get(ustun) is not None:
                 updates.append((ustun, float(qiymat[ustun]), row["id"]))
     if updates:
@@ -172,6 +173,9 @@ def init_db():
             db.execute("ALTER TABLE mahsulotlar ADD COLUMN ikpu TEXT")
         if "komissiya_foiz" not in mahsulot_ustunlari:
             db.execute("ALTER TABLE mahsulotlar ADD COLUMN komissiya_foiz REAL NOT NULL DEFAULT 25")
+        # "Буст заказов" - Uzum reklamasi, sotuvdan qo'shimcha foiz oladi
+        if "boost_foiz" not in mahsulot_ustunlari:
+            db.execute("ALTER TABLE mahsulotlar ADD COLUMN boost_foiz REAL NOT NULL DEFAULT 0")
         ombor_ustunlari = [r[1] for r in db.execute("PRAGMA table_info(ombor_harakatlari)")]
         if "operatsiya_id" not in ombor_ustunlari:
             db.execute(
@@ -355,12 +359,13 @@ def update_narxlar(mahsulot_id):
         boshqa_harajat = float(data.get("boshqa_harajat"))
         # Uzum komissiyasi kategoriyaga qarab har xil - har mahsulotga qo'lda
         komissiya_foiz = float(data.get("komissiya_foiz", 25))
-        if min(narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, komissiya_foiz) < 0:
+        boost_foiz = float(data.get("boost_foiz", 0))
+        if min(narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, komissiya_foiz, boost_foiz) < 0:
             raise ValueError
     except (TypeError, ValueError):
         return jsonify({"xato": "Все значения должны быть числами не меньше 0"}), 400
-    if komissiya_foiz > 100:
-        return jsonify({"xato": "Комиссия не может быть больше 100%"}), 400
+    if komissiya_foiz > 100 or boost_foiz > 100:
+        return jsonify({"xato": "Комиссия и буст не могут быть больше 100%"}), 400
 
     tannarx = narx_usd * kurs
 
@@ -373,9 +378,9 @@ def update_narxlar(mahsulot_id):
     db.execute(
         """UPDATE mahsulotlar
            SET tannarx = ?, narx_usd = ?, kurs = ?, sotish_narxi = ?, logistika = ?, boshqa_harajat = ?,
-               komissiya_foiz = ?
+               komissiya_foiz = ?, boost_foiz = ?
            WHERE id = ?""",
-        (tannarx, narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, komissiya_foiz, mahsulot_id),
+        (tannarx, narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat, komissiya_foiz, boost_foiz, mahsulot_id),
     )
     db.commit()
     return jsonify({
@@ -387,6 +392,7 @@ def update_narxlar(mahsulot_id):
         "logistika": logistika,
         "boshqa_harajat": boshqa_harajat,
         "komissiya_foiz": komissiya_foiz,
+        "boost_foiz": boost_foiz,
     })
 
 
@@ -719,7 +725,7 @@ def tannarx_hisobot():
     db = get_db()
     mahsulotlar_qatorlari = db.execute(
         """SELECT id, nomi, qoldiq, tannarx, narx_usd, kurs, sotish_narxi, logistika, boshqa_harajat,
-                  komissiya_foiz, rasm
+                  komissiya_foiz, boost_foiz, rasm
            FROM mahsulotlar"""
     ).fetchall()
     mahsulotlar = [dict(r) for r in mahsulotlar_qatorlari]

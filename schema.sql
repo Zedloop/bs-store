@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS mahsulotlar (
     logistika REAL NOT NULL DEFAULT 5000,
     boshqa_harajat REAL NOT NULL DEFAULT 100,
     komissiya_foiz REAL NOT NULL DEFAULT 25,
+    boost_foiz REAL NOT NULL DEFAULT 0,
     rasm TEXT,
     yaratilgan_sana TEXT NOT NULL DEFAULT (datetime('now'))
 );
