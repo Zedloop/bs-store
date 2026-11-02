@@ -64,7 +64,7 @@ def login():
             session["authed"] = True
             session.permanent = True
             return redirect(url_for("index"))
-        xato = "Parol noto'g'ri"
+        xato = "Неверный пароль"
     return render_template("login.html", xato=xato)
 
 

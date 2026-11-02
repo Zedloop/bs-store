@@ -3,13 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kirish — BS Store</title>
+<title>Вход — BS Store</title>
 <link rel="icon" type="image/png" sizes="64x64" href="/static/favicon.png">
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<script>
+// Ichki sahifalardagi kabi - foydalanuvchi tanlagan mavzu (yoki tizimniki)
+(function () {
+  try {
+    var saved = localStorage.getItem("mini-erp-tema");
+    var tema = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", tema);
+  } catch (e) {}
+})();
+</script>
 <style>
   :root {
     color-scheme: light;
@@ -20,22 +30,46 @@
     --text-muted: #7a7972;
     --accent: #2f6f4f;
     --accent-hover: #24593f;
+    --accent-soft: #e9f3ee;
     --danger: #c23a2e;
     --danger-soft: #fbebe9;
+    --glow-1: rgba(47, 111, 79, 0.10);
+    --glow-2: rgba(59, 79, 199, 0.08);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 16px 40px rgba(0, 0, 0, 0.08);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
-      --bg: #1c1c1a;
-      --surface: #252522;
-      --border: #38372f;
-      --text: #ecebe6;
-      --text-muted: #a3a195;
-      --accent: #4f9d74;
-      --accent-hover: #5fb584;
-      --danger: #e2685b;
-      --danger-soft: #3a2420;
+      --bg: #16171a;
+      --surface: #1f2023;
+      --border: #35363b;
+      --text: #eae9e6;
+      --text-muted: #9b9a94;
+      --accent: #46a578;
+      --accent-hover: #57b88a;
+      --accent-soft: rgba(70, 165, 120, 0.16);
+      --danger: #e2695c;
+      --danger-soft: rgba(226, 105, 92, 0.16);
+      --glow-1: rgba(70, 165, 120, 0.22);
+      --glow-2: rgba(143, 160, 255, 0.16);
+      --shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 18px 48px rgba(0, 0, 0, 0.45);
     }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #16171a;
+    --surface: #1f2023;
+    --border: #35363b;
+    --text: #eae9e6;
+    --text-muted: #9b9a94;
+    --accent: #46a578;
+    --accent-hover: #57b88a;
+    --accent-soft: rgba(70, 165, 120, 0.16);
+    --danger: #e2695c;
+    --danger-soft: rgba(226, 105, 92, 0.16);
+    --glow-1: rgba(70, 165, 120, 0.22);
+    --glow-2: rgba(143, 160, 255, 0.16);
+    --shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 18px 48px rgba(0, 0, 0, 0.45);
   }
   * { box-sizing: border-box; }
   body {
@@ -44,67 +78,70 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     padding: 16px;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(700px circle at 15% 10%, var(--glow-1), transparent 60%),
+      radial-gradient(600px circle at 88% 90%, var(--glow-2), transparent 55%);
+    background-repeat: no-repeat;
+    color: var(--text);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
   .karta {
     width: 100%;
-    max-width: 340px;
+    max-width: 380px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 28px 24px;
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    padding: 34px 30px 30px;
   }
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 4px;
-  }
-  .brand img {
-    width: 40px;
-    height: 40px;
-    border-radius: 9px;
-    object-fit: cover;
-  }
+  .brand { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .brand img { width: 64px; height: 64px; border-radius: 16px; object-fit: cover; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
   .brand span {
     font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
     font-weight: 700;
-    font-size: 1.3rem;
+    font-size: 24px;
     letter-spacing: 0.2px;
   }
   .brand span b { color: var(--accent); }
-  p.sub { color: var(--text-muted); margin: 0 0 20px; font-size: 0.9rem; }
+  p.sub { color: var(--text-muted); margin: 0 0 24px; font-size: 14px; text-align: center; }
+  label { display: block; font-size: 12.5px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
   input[type="password"] {
     width: 100%;
-    padding: 10px 12px;
+    padding: 12px 14px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--bg);
     color: var(--text);
-    font-size: 1rem;
-    margin-bottom: 14px;
+    font-size: 15px;
+    font-family: inherit;
+    margin-bottom: 16px;
   }
+  input[type="password"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   button {
     width: 100%;
-    padding: 10px 12px;
+    padding: 12px 14px;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--accent);
     color: #fff;
-    font-size: 1rem;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
     cursor: pointer;
+    transition: background 0.15s, transform 0.12s;
   }
-  button:hover { background: var(--accent-hover); }
+  button:hover { background: var(--accent-hover); transform: translateY(-1px); }
   .xato {
     background: var(--danger-soft);
     color: var(--danger);
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    margin-bottom: 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    margin-bottom: 16px;
+    text-align: center;
   }
 </style>
 </head>
@@ -114,11 +151,12 @@
       <img src="/static/bs-logo.jpg" alt="BS Store">
       <span>BS <b>Store</b></span>
     </div>
-    <p class="sub">Davom etish uchun parolni kiriting</p>
+    <p class="sub">Склад · касса · себестоимость</p>
     {% if xato %}<div class="xato">{{ xato }}</div>{% endif %}
     <form method="post">
-      <input type="password" name="parol" placeholder="Parol" autofocus required>
-      <button type="submit">Kirish</button>
+      <label for="parol">Пароль</label>
+      <input type="password" id="parol" name="parol" placeholder="Введите пароль" autofocus required>
+      <button type="submit">Войти</button>
     </form>
   </div>
 </body>
