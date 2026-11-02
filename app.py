@@ -14,7 +14,7 @@ import uuid
 from email.message import EmailMessage
 from pathlib import Path
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from PIL import Image
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -43,6 +43,10 @@ SCHEMA_PATH = BASE_DIR / "schema.sql"
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
 ALLOWED_RASM_EXT = {"png", "jpg", "jpeg", "gif", "webp"}
 MAX_RASM_OLCHAM = 640
+# Kontragent operatsiyalari rasmlari (nakladnoy, chek) - static'dan tashqarida,
+# faqat ERP'ga kirgan foydalanuvchiga ko'rinadi; matn o'qilishi uchun kattaroq
+KONTRAGENT_RASM_DIR = BASE_DIR / "kontragent_rasmlar"
+KONTRAGENT_RASM_OLCHAM = 1600
 OMBOR_TURLARI = ("kirim", "chiqim", "samovykup", "spisanie", "prodazha")
 
 app = Flask(__name__)
@@ -68,7 +72,7 @@ ADMIN_ENDPOINTLAR = {
 MENEJER_YOZISH = {
     "add_ombor_harakat", "add_operatsiya", "delete_operatsiya", "add_operatsiya_tovar",
     "update_ombor_harakat", "delete_ombor_harakat", "add_kassa_harakat",
-    "add_kontragent", "add_kontragent_harakat",
+    "add_kontragent", "add_kontragent_harakat", "upload_kontragent_rasm",
 }
 
 
@@ -127,6 +131,8 @@ AMAL_NOMLARI = {
     "add_kontragent_harakat": "Операция с контрагентом",
     "delete_kontragent_harakat": "Удалена операция с контрагентом",
     "update_kontragent_harakat": "Изменена операция с контрагентом",
+    "upload_kontragent_rasm": "Добавлено фото к операции с контрагентом",
+    "delete_kontragent_rasm": "Удалено фото операции с контрагентом",
     "taklif_yuborish": "Отправлено приглашение",
     "taklif_bekor": "Отменено приглашение",
     "update_foydalanuvchi": "Изменён пользователь",
@@ -523,6 +529,9 @@ def init_db():
         # "Буст заказов" - Uzum reklamasi, sotuvdan qo'shimcha foiz oladi
         if "boost_foiz" not in mahsulot_ustunlari:
             db.execute("ALTER TABLE mahsulotlar ADD COLUMN boost_foiz REAL NOT NULL DEFAULT 0")
+        kontragent_ustunlari = [r[1] for r in db.execute("PRAGMA table_info(kontragent_harakatlari)")]
+        if "rasm" not in kontragent_ustunlari:
+            db.execute("ALTER TABLE kontragent_harakatlari ADD COLUMN rasm TEXT")
         ombor_ustunlari = [r[1] for r in db.execute("PRAGMA table_info(ombor_harakatlari)")]
         if "operatsiya_id" not in ombor_ustunlari:
             db.execute(
@@ -1238,7 +1247,7 @@ def get_kontragent(kontragent_id):
     if k is None:
         return jsonify({"xato": "Контрагент не найден"}), 404
     rows = db.execute(
-        "SELECT id, sana, turi, summa, belgi, izoh, kassa_id FROM kontragent_harakatlari "
+        "SELECT id, sana, turi, summa, belgi, izoh, kassa_id, rasm FROM kontragent_harakatlari "
         "WHERE kontragent_id = ? ORDER BY id DESC",
         (kontragent_id,),
     ).fetchall()
@@ -1297,17 +1306,17 @@ def add_kontragent_harakat(kontragent_id):
             "INSERT INTO kassa_harakatlari (turi, summa, izoh) VALUES (?, ?, ?)",
             (kassa_turi, summa, kassa_izoh),
         ).lastrowid
-    db.execute(
+    harakat_id = db.execute(
         "INSERT INTO kontragent_harakatlari (kontragent_id, turi, summa, belgi, izoh, kassa_id) "
         "VALUES (?, ?, ?, ?, ?, ?)",
         (kontragent_id, turi, summa, belgi, izoh, kassa_id),
-    )
+    ).lastrowid
     db.commit()
     g.jurnal_tafsilot = (
         f"{k['nomi']}: {nomi.lower()} {_usd(summa)}"
         + (" (через кассу)" if kassa_id else "")
     )
-    return jsonify({"ok": True}), 201
+    return jsonify({"ok": True, "id": harakat_id}), 201
 
 
 @app.route("/api/kontragent-harakat/<int:harakat_id>", methods=["DELETE"])
@@ -1324,6 +1333,8 @@ def delete_kontragent_harakat(harakat_id):
     if h["kassa_id"]:
         db.execute("DELETE FROM kassa_harakatlari WHERE id = ?", (h["kassa_id"],))
     db.commit()
+    if h["rasm"]:
+        (KONTRAGENT_RASM_DIR / h["rasm"]).unlink(missing_ok=True)
     g.jurnal_tafsilot = (
         f"{h['kontragent']}: {KONTRAGENT_TURLARI[h['turi']][0].lower()} {_usd(h['summa'])}"
     )
@@ -1373,6 +1384,70 @@ def update_kontragent_harakat(harakat_id):
     if izoh != h["izoh"]:
         ozgarish.append(f"комментарий: {izoh or '—'}")
     g.jurnal_tafsilot = f"{h['kontragent']}: " + "; ".join(ozgarish) if ozgarish else ""
+    return jsonify({"ok": True})
+
+
+@app.route("/kontragent-rasm/<nom>")
+def kontragent_rasm(nom):
+    return send_from_directory(KONTRAGENT_RASM_DIR, nom)
+
+
+@app.route("/api/kontragent-harakat/<int:harakat_id>/rasm", methods=["POST"])
+def upload_kontragent_rasm(harakat_id):
+    db = get_db()
+    h = db.execute(
+        "SELECT h.id, h.rasm, h.summa, h.turi, k.nomi AS kontragent FROM kontragent_harakatlari h "
+        "JOIN kontragentlar k ON k.id = h.kontragent_id WHERE h.id = ?",
+        (harakat_id,),
+    ).fetchone()
+    if h is None:
+        return jsonify({"xato": "Операция не найдена"}), 404
+    fayl = request.files.get("rasm")
+    if fayl is None or fayl.filename == "":
+        return jsonify({"xato": "Файл не выбран"}), 400
+    if not rasm_ruxsat_etilganmi(fayl.filename):
+        return jsonify({"xato": "Разрешены только изображения (png, jpg, jpeg, gif, webp)"}), 400
+    try:
+        rasm = Image.open(fayl.stream)
+        rasm.load()
+    except Exception:
+        return jsonify({"xato": "Не удалось открыть изображение"}), 400
+
+    KONTRAGENT_RASM_DIR.mkdir(parents=True, exist_ok=True)
+    kengaytma = fayl.filename.rsplit(".", 1)[1].lower()
+    yangi_nom = f"{harakat_id}_{uuid.uuid4().hex}.{kengaytma}"
+    rasm.thumbnail((KONTRAGENT_RASM_OLCHAM, KONTRAGENT_RASM_OLCHAM))
+    saqlash_sozlamalari = {"optimize": True}
+    if kengaytma in ("jpg", "jpeg"):
+        if rasm.mode in ("RGBA", "P"):
+            rasm = rasm.convert("RGB")
+        saqlash_sozlamalari["quality"] = 85
+    elif kengaytma == "webp":
+        saqlash_sozlamalari["quality"] = 85
+    rasm.save(KONTRAGENT_RASM_DIR / yangi_nom, **saqlash_sozlamalari)
+
+    db.execute("UPDATE kontragent_harakatlari SET rasm = ? WHERE id = ?", (yangi_nom, harakat_id))
+    db.commit()
+    if h["rasm"]:
+        (KONTRAGENT_RASM_DIR / h["rasm"]).unlink(missing_ok=True)
+    g.jurnal_tafsilot = f"{h['kontragent']}: {KONTRAGENT_TURLARI[h['turi']][0].lower()} {_usd(h['summa'])}"
+    return jsonify({"ok": True, "rasm": yangi_nom})
+
+
+@app.route("/api/kontragent-harakat/<int:harakat_id>/rasm", methods=["DELETE"])
+def delete_kontragent_rasm(harakat_id):
+    db = get_db()
+    h = db.execute(
+        "SELECT h.id, h.rasm, h.summa, h.turi, k.nomi AS kontragent FROM kontragent_harakatlari h "
+        "JOIN kontragentlar k ON k.id = h.kontragent_id WHERE h.id = ?",
+        (harakat_id,),
+    ).fetchone()
+    if h is None or not h["rasm"]:
+        return jsonify({"xato": "Фото не найдено"}), 404
+    db.execute("UPDATE kontragent_harakatlari SET rasm = NULL WHERE id = ?", (harakat_id,))
+    db.commit()
+    (KONTRAGENT_RASM_DIR / h["rasm"]).unlink(missing_ok=True)
+    g.jurnal_tafsilot = f"{h['kontragent']}: {KONTRAGENT_TURLARI[h['turi']][0].lower()} {_usd(h['summa'])}"
     return jsonify({"ok": True})
 
 

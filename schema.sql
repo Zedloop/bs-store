@@ -109,5 +109,6 @@ CREATE TABLE IF NOT EXISTS kontragent_harakatlari (
     summa REAL NOT NULL CHECK(summa > 0),
     belgi INTEGER NOT NULL CHECK(belgi IN (1, -1)),
     izoh TEXT,
-    kassa_id INTEGER REFERENCES kassa_harakatlari(id)
+    kassa_id INTEGER REFERENCES kassa_harakatlari(id),
+    rasm TEXT
 );
