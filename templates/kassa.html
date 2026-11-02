@@ -4,11 +4,16 @@
   <div class="grid">
 
     <div class="card full">
-      <h2>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>
-        Расчёты
-      </h2>
-      <form id="form-kontragent">
+      <div class="detail-header">
+        <h2 style="margin:0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>
+          Расчёты
+        </h2>
+        <button type="button" class="icon-btn" id="btn-kontragent-qoshish" title="Добавить контрагента" aria-label="Добавить контрагента">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <form id="form-kontragent" style="display:none">
         <div class="field field-grow">
           <label for="kontragent-nomi">Имя / название</label>
           <input type="text" id="kontragent-nomi" placeholder="Например: Озод" required>
@@ -18,6 +23,7 @@
           <input type="text" id="kontragent-telefon" placeholder="Необязательно">
         </div>
         <button type="submit">Добавить контрагента</button>
+        <button type="button" class="btn-secondary" id="btn-kontragent-bekor">Отмена</button>
       </form>
       <div class="xato" id="xato-kontragent"></div>
       <table>
@@ -55,6 +61,19 @@ document.getElementById("form-kontragent").addEventListener("submit", async (e) 
     location.href = "/kontragent/" + res.id;
   } catch (err) { showError("xato-kontragent", err.message); }
 });
+
+// "+" bosilganda yangi kontragent formasi ochiladi, "Отмена"/Esc - yopiladi
+function kontragentFormasi(ochiq) {
+  const form = document.getElementById("form-kontragent");
+  form.style.display = ochiq ? "" : "none";
+  document.getElementById("btn-kontragent-qoshish").style.display = ochiq ? "none" : "";
+  showError("xato-kontragent", "");
+  if (ochiq) document.getElementById("kontragent-nomi").focus();
+  else form.reset();
+}
+document.getElementById("btn-kontragent-qoshish").addEventListener("click", () => kontragentFormasi(true));
+document.getElementById("btn-kontragent-bekor").addEventListener("click", () => kontragentFormasi(false));
+document.getElementById("form-kontragent").addEventListener("keydown", e => { if (e.key === "Escape") kontragentFormasi(false); });
 
 refreshKontragentlar();
 </script>
