@@ -126,6 +126,7 @@ AMAL_NOMLARI = {
     "delete_kontragent": "Удалён контрагент",
     "add_kontragent_harakat": "Операция с контрагентом",
     "delete_kontragent_harakat": "Удалена операция с контрагентом",
+    "update_kontragent_harakat": "Изменена операция с контрагентом",
     "taklif_yuborish": "Отправлено приглашение",
     "taklif_bekor": "Отменено приглашение",
     "update_foydalanuvchi": "Изменён пользователь",
@@ -1321,6 +1322,52 @@ def delete_kontragent_harakat(harakat_id):
     g.jurnal_tafsilot = (
         f"{h['kontragent']}: {KONTRAGENT_TURLARI[h['turi']][0].lower()} {h['summa']:,.0f} сум".replace(",", " ")
     )
+    return jsonify({"ok": True})
+
+
+@app.route("/api/kontragent-harakat/<int:harakat_id>", methods=["PATCH"])
+def update_kontragent_harakat(harakat_id):
+    data = request.get_json(force=True)
+    db = get_db()
+    h = db.execute(
+        "SELECT h.*, k.nomi AS kontragent FROM kontragent_harakatlari h "
+        "JOIN kontragentlar k ON k.id = h.kontragent_id WHERE h.id = ?",
+        (harakat_id,),
+    ).fetchone()
+    if h is None:
+        return jsonify({"xato": "Операция не найдена"}), 404
+
+    turi = data.get("turi", h["turi"])
+    if turi not in KONTRAGENT_TURLARI:
+        return jsonify({"xato": "Неверный тип операции"}), 400
+    # Spisanie yo'nalishi yozilgan paytdagi qarzga bog'liq - boshqa turga almashtirib bo'lmaydi
+    if (turi == "spisanie") != (h["turi"] == "spisanie"):
+        return jsonify({"xato": "Списание нельзя поменять на другой тип — удалите и добавьте заново"}), 400
+    try:
+        summa = float(data.get("summa", h["summa"]))
+        if summa <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"xato": "Сумма должна быть положительным числом"}), 400
+    izoh = (data.get("izoh", h["izoh"]) or "").strip() or None
+    belgi = h["belgi"] if turi == "spisanie" else KONTRAGENT_TURLARI[turi][1]
+
+    db.execute(
+        "UPDATE kontragent_harakatlari SET turi = ?, summa = ?, belgi = ?, izoh = ? WHERE id = ?",
+        (turi, summa, belgi, izoh, harakat_id),
+    )
+    if h["kassa_id"]:
+        db.execute("UPDATE kassa_harakatlari SET summa = ? WHERE id = ?", (summa, h["kassa_id"]))
+    db.commit()
+
+    ozgarish = []
+    if turi != h["turi"]:
+        ozgarish.append(f"{KONTRAGENT_TURLARI[h['turi']][0]} → {KONTRAGENT_TURLARI[turi][0]}")
+    if abs(summa - h["summa"]) > 0.001:
+        ozgarish.append(f"сумма {h['summa']:,.0f} → {summa:,.0f}".replace(",", " "))
+    if izoh != h["izoh"]:
+        ozgarish.append(f"комментарий: {izoh or '—'}")
+    g.jurnal_tafsilot = f"{h['kontragent']}: " + "; ".join(ozgarish) if ozgarish else ""
     return jsonify({"ok": True})
 
 

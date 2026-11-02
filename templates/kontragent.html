@@ -77,6 +77,8 @@ const TURLAR = {
   spisanie:    { nomi: "Списание",          badge: "badge-spisanie", hint: "" },
 };
 let balans = 0;
+let harakatlar = [];
+const TAHRIR_MUMKIN = document.body.dataset.rol === "admin";
 
 function som(v) { return Math.abs(v).toLocaleString("ru-RU") + " сум"; }
 
@@ -115,11 +117,12 @@ async function refresh() {
   document.getElementById("balans").className = "balans " + h.cls;
   document.getElementById("balans-wrap").className = "balans-wrap " + (h.cls === "manfiy" ? "manfiy" : "");
 
+  harakatlar = data.harakatlar;
   // "Долг после" - har bir operatsiyadan keyingi balans (eng yangisidan orqaga hisoblaymiz)
   let keyin = balans;
   document.getElementById("harakatlar-jadval").innerHTML = data.harakatlar.map(r => {
     const t = TURLAR[r.turi];
-    const qator = `<tr>
+    const qator = `<tr id="harakat-${r.id}" class="${TAHRIR_MUMKIN ? "clickable-row" : ""}" ${TAHRIR_MUMKIN ? `onclick="tahrirlash(event, ${r.id})" title="Нажмите, чтобы изменить"` : ""}>
       <td>${r.sana.slice(0,16)}</td>
       <td><span class="badge ${t.badge}">${t.nomi}</span>${r.kassa_id ? ' <span class="hint" style="display:inline;margin:0">· касса</span>' : ""}</td>
       <td>${r.belgi > 0 ? "+" : "−"}${r.summa.toLocaleString("ru-RU")}</td>
@@ -131,6 +134,45 @@ async function refresh() {
     return qator;
   }).join("") || "<tr><td colspan=6 class='empty-row'>Операций пока нет</td></tr>";
   turiOzgardi();
+}
+
+function tahrirlash(e, id) {
+  if (e.target.closest("button, input, select")) return;
+  const r = harakatlar.find(x => x.id === id);
+  const tr = document.getElementById("harakat-" + id);
+  if (!r || !tr || tr.dataset.tahrir) return;
+  tr.dataset.tahrir = "1";
+  tr.classList.remove("clickable-row");
+  const turlar = r.turi === "spisanie"
+    ? `<option value="spisanie">Списание</option>`
+    : ["tovar_oldim", "tolov", "pul_oldim"].map(k =>
+        `<option value="${k}" ${k === r.turi ? "selected" : ""}>${TURLAR[k].nomi}</option>`).join("");
+  tr.innerHTML = `
+    <td>${r.sana.slice(0,16)}</td>
+    <td><select id="t-turi-${id}" ${r.turi === "spisanie" ? "disabled" : ""}>${turlar}</select></td>
+    <td><input type="number" id="t-summa-${id}" value="${r.summa}" min="1" step="0.01" style="width:120px"></td>
+    <td></td>
+    <td><input type="text" id="t-izoh-${id}" value="${escapeHtml(r.izoh || "")}" style="width:100%"></td>
+    <td style="white-space:nowrap">
+      <button type="button" onclick="tahrirSaqlash(${id})">Сохранить</button>
+      <button type="button" class="btn-secondary" onclick="refresh()">Отмена</button>
+    </td>`;
+  document.getElementById("t-summa-" + id).focus();
+  tr.querySelectorAll("input").forEach(inp => inp.addEventListener("keydown", ev => {
+    if (ev.key === "Enter") tahrirSaqlash(id);
+    if (ev.key === "Escape") refresh();
+  }));
+}
+
+async function tahrirSaqlash(id) {
+  try {
+    await apiSend("PATCH", `/api/kontragent-harakat/${id}`, {
+      turi: document.getElementById("t-turi-" + id).value,
+      summa: document.getElementById("t-summa-" + id).value,
+      izoh: document.getElementById("t-izoh-" + id).value.trim(),
+    });
+    await refresh();
+  } catch (err) { alert(err.message); }
 }
 
 async function harakatOchir(id) {
